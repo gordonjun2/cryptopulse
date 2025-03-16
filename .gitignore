@@ -172,3 +172,11 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+
+# Private keys
+private.ini
+
+# Others
+.DS_Store
+*.session
+*.session-journal
