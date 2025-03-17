@@ -4,7 +4,8 @@ import aiohttp
 import asyncio
 from pyrogram import Client, utils, filters, idle
 from config import (TELEGRAM_API_KEY, TELEGRAM_HASH, CHAT_ID_LIST,
-                    MAIN_CHAT_ID, BITDEER_AI_BEARER_TOKEN, TELEGRAM_BOT_TOKEN)
+                    MAIN_CHAT_ID, BITDEER_AI_BEARER_TOKEN, TELEGRAM_BOT_TOKEN,
+                    PROMPT)
 
 # bot = telebot.TeleBot(TELEGRAM_BOT_TOKEN, threaded=False)
 bot = telebot.TeleBot('', threaded=False)
@@ -61,18 +62,8 @@ async def message_processor():
                 "model":
                 "deepseek-ai/DeepSeek-V3",
                 "messages": [{
-                    "role":
-                    "system",
-                    "content":
-                    "You are an assistant specialized in extracting \
-                        cryptocurrencies mentioned in a given text and \
-                        analyzing the tone of the news to generate a \
-                        bullish prediction. Your task is to extract \
-                        any cryptocurrency tickers in uppercase (e.g., \
-                        XRP, SOL, ADA) and provide a bullish percentage \
-                        prediction based on the tone of the news, \
-                        formatted strictly as: 'Coins: [ticker 1], \
-                        [ticker 2], ... Bullish: [percentage]%'"
+                    "role": "system",
+                    "content": PROMPT
                 }, {
                     "role": "user",
                     "content": message.text
