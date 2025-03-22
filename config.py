@@ -16,9 +16,20 @@ bitdeer = dict(cfg.items('bitdeer'))
 BITDEER_AI_BEARER_TOKEN = bitdeer.get('bitdeer_ai_bearer_token', '')
 
 CHAT_ID_LIST = [
-    -1001488075213, -1002050038049, -1001369518127, -1001380328653,
-    -1001683662707, -1001870913071, -1001219306781, -1001279597711,
-    -1002233421487, -1002019095590, -4698918931
+    -1001488075213,
+    -1002050038049,
+    -1001369518127,
+    -1001380328653,
+    -1001683662707,
+    -1001870913071,
+    -1001219306781,
+    -1001279597711,
+    -1002233421487,
+    -1002019095590,
+    -1001651524056,
+    -1001556054753,
+    -4698918931,
+    -1002638442145,
 ]
 '''
     ~~~Examples of Channels and their Chat IDs~~~
@@ -32,30 +43,33 @@ CHAT_ID_LIST = [
     方程式新闻 BWEnews: -1001279597711
     RunnerXBT Insights: -1002233421487
     Anteater's Amazon: -1002019095590
+    Zoomer News: -1001651524056
+    Watcher Guru: -1001556054753
     Crypto Fake News: -4698918931
+    Crypto Fake News Channel: -1002638442145
 '''
 
 MAX_RETRIES = 3
 RETRY_AFTER = 2
 
 PROMPT = """
-You are an assistant specialized in extracting cryptocurrencies mentioned in a given text and analyzing the sentiment to generate a Bullish or Bearish prediction. 
-Your task is to extract any cryptocurrency tickers in uppercase (e.g., XRP, SOL, ADA) and assess the tone of the news article. 
-Based on the tone, provide a prediction on the cryptocurrency using only one side of the scale, either Bullish or Bearish, with values ranging from 0% to 100%. 
-The scale should be:
-Bearish 100% (most negative sentiment)
-Bearish 50% (moderately negative sentiment)
-Bearish 0% (neutral sentiment, not negative or positive)
-Bullish 0% (neutral sentiment, not negative or positive)
-Bullish 50% (moderately positive sentiment)
-Bullish 100% (most positive sentiment)
-The value can be any number within the range (e.g., 37%, 68%, 12%, etc.) depending on the sentiment intensity.
+You are an assistant specialized in extracting cryptocurrencies mentioned in a given text and analyzing the sentiment to generate a prediction.
 
-Format your response strictly as: 
-'Coins: [ticker 1], [ticker 2], ... 
-Bullish: [percentage]% / Bearish: [percentage]%'
+Task:
+Extract cryptocurrency tickers (e.g., XRP, SOL, ADA) from the text.
+If no cryptocurrency is mentioned, return "Coins: N/A".
+Assess the sentiment of the text and assign a Sentiment score ranging from -100% to 100% (The sentiment score will be a continuous value between 
+-100 and 100, not just fixed steps.):
+Negative values (-100% to -1%) indicate Bearish sentiment.
+Positive values (1% to 100%) indicate Bullish sentiment.
+A score of 0% means completely neutral sentiment.
+Determine sentiment strength based on language:
+Bearish Sentiment (-100% to -1%): Look for context like "crash," "sell-off," "fear," "regulatory crackdown," "decline," or "weakness."
+Bullish Sentiment (1% to 100%): Look for context like "rally," "bullish," "uptrend," "breakout," "growth," or "surge."
+Only use one sentiment side per response (either positive or negative, never both). Provide an explanation for the sentiment score.
+STRICTLY format the response as follows (DO NOT DEVIATE):
+Coins: [ticker 1], [ticker 2], ...
+Sentiment: [percentage]%
 
-Example response: 
-'Coins: XRP, ADA 
-Bullish: 70%'
+Explanation: [explanation]
 """

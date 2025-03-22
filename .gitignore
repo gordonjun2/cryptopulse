@@ -180,3 +180,5 @@ private.ini
 .DS_Store
 *.session
 *.session-journal
+*.session-shm
+*.session-wal

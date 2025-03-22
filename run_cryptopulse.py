@@ -66,7 +66,7 @@ async def message_processor():
                     "content": PROMPT
                 }, {
                     "role": "user",
-                    "content": message.text
+                    "content": message.text or message.caption
                 }],
                 "max_tokens":
                 1024,
@@ -118,17 +118,18 @@ async def message_processor():
 
 @app.on_message(filters.chat(CHAT_ID_LIST))
 async def my_handler(client, message):
-    print(f"Message received from chat: {message.chat.id}")
-    print(f"Message: {message.text}")
+    if message.text or message.caption:
+        print(f"Message received from chat: {message.chat.id}")
+        print(f"Message: {message.text or message.caption}")
 
-    try:
-        forwarded_message = await message.forward(chat_id=int(MAIN_CHAT_ID))
-        print("Message forwarded successfully.\n")
+        try:
+            forwarded_message = await message.forward(chat_id=int(MAIN_CHAT_ID)
+                                                      )
+            print("Message forwarded successfully.\n")
 
-        if forwarded_message.text:
             await message_queue.put(forwarded_message)
-    except Exception as e:
-        print(f"Error forwarding message: {e}\n")
+        except Exception as e:
+            print(f"Error forwarding message: {e}\n")
 
 
 def signal_handler(sig, frame):
