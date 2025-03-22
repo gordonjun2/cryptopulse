@@ -67,7 +67,7 @@ Determine sentiment strength based on language:
 Bearish Sentiment (-100% to -1%): Look for context like "crash," "sell-off," "fear," "regulatory crackdown," "decline," or "weakness."
 Bullish Sentiment (1% to 100%): Look for context like "rally," "bullish," "uptrend," "breakout," "growth," or "surge."
 Only use one sentiment side per response (either positive or negative, never both). Provide an explanation for the sentiment score.
-STRICTLY format the response as follows (DO NOT DEVIATE):
+STRICTLY format the response as follows (DO NOT DEVIATE and put a line break between Sentiment and Explanation):
 Coins: [ticker 1], [ticker 2], ...
 Sentiment: [percentage]%
 
