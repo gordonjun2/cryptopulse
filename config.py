@@ -18,16 +18,16 @@ BITDEER_AI_BEARER_TOKEN = bitdeer.get('bitdeer_ai_bearer_token', '')
 CHAT_ID_LIST = [
     -1001488075213,
     -1002050038049,
-    -1001369518127,
+    # -1001369518127,
     -1001380328653,
-    -1001683662707,
-    -1001870913071,
+    # -1001683662707,
+    # -1001870913071,
     -1001219306781,
     -1001279597711,
-    -1002233421487,
+    # -1002233421487,
     -1002019095590,
     -1001651524056,
-    -1001556054753,
+    # -1001556054753,
     -4698918931,
     -1002638442145,
 ]
@@ -38,7 +38,7 @@ CHAT_ID_LIST = [
     Crypto Mumbles: -1001369518127
     infinityhedge: -1001380328653
     Ian's Intel: -1001683662707
-    Moonbags Personal Notes: -1001870913071
+    # Moonbags Personal Notes: -1001870913071
     Tree News: -1001219306781
     方程式新闻 BWEnews: -1001279597711
     RunnerXBT Insights: -1002233421487
@@ -63,10 +63,10 @@ Assess the sentiment of the text and assign a Sentiment score ranging from -100%
 Negative values (-100% to -1%) indicate Bearish sentiment.
 Positive values (1% to 100%) indicate Bullish sentiment.
 A score of 0% means completely neutral sentiment.
-Determine sentiment strength based on language:
-Bearish Sentiment (-100% to -1%): Look for context like "crash," "sell-off," "fear," "regulatory crackdown," "decline," or "weakness."
-Bullish Sentiment (1% to 100%): Look for context like "rally," "bullish," "uptrend," "breakout," "growth," or "surge."
-Only use one sentiment side per response (either positive or negative, never both). Provide an explanation for the sentiment score.
+Consider both direct (crypto-specific) and indirect (macro/geopolitical) factors influencing sentiment:
+Bearish Sentiment (-100% to -1%): Look for context like "crash," "sell-off," "fear," "regulatory crackdown," "decline," "war," "uncertainty," "economic slowdown," "liquidity issues," "bank failures."
+Bullish Sentiment (1% to 100%): Look for context like "rally," "bullish," "uptrend," "breakout," "growth," "institutional adoption," "rate cuts," "fiscal stimulus," "ETF approval."
+Only use one sentiment side per response (either positive or negative, never both). Provide a clear explanation for the assigned sentiment score.
 STRICTLY format the response as follows (DO NOT DEVIATE and put a line break between Sentiment and Explanation):
 Coins: [ticker 1], [ticker 2], ...
 Sentiment: [percentage]%
