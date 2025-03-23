@@ -352,7 +352,7 @@ async def message_processor():
 
                                     # Extract symbols from the content
                                     matches = re.findall(
-                                        r"Coins:\s*([\w, ]+)", content)
+                                        r"Coins:\s*([\w, /]+)", content)
                                     symbols = matches[0].replace(
                                         " ", "").split(",") if matches else []
                                     not_found_tickers = []
