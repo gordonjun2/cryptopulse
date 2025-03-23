@@ -28,6 +28,7 @@ CHAT_ID_LIST = [
     -1002019095590,
     -1001651524056,
     # -1001556054753,
+    -1002457358877,
     -4698918931,
     -1002638442145,
 ]
@@ -45,6 +46,7 @@ CHAT_ID_LIST = [
     Anteater's Amazon: -1002019095590
     Zoomer News: -1001651524056
     Watcher Guru: -1001556054753
+    Solid Intel: -1002457358877
     Crypto Fake News: -4698918931
     Crypto Fake News Channel: -1002638442145
 '''
