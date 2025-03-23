@@ -67,7 +67,7 @@ Consider both direct (crypto-specific) and indirect (macro/geopolitical) factors
 Bearish Sentiment (-100% to -1%): Look for context like "crash," "sell-off," "fear," "regulatory crackdown," "decline," "war," "uncertainty," "economic slowdown," "liquidity issues," "bank failures."
 Bullish Sentiment (1% to 100%): Look for context like "rally," "bullish," "uptrend," "breakout," "growth," "institutional adoption," "rate cuts," "fiscal stimulus," "ETF approval."
 Only use one sentiment side per response (either positive or negative, never both). Provide a clear explanation for the assigned sentiment score.
-STRICTLY format the response as follows (DO NOT DEVIATE and put a line break between Sentiment and Explanation):
+STRICTLY format the response as follows (DO NOT DEVIATE and Coins and Sentiment are on separate lines without extra space. Sentiment and Explanation are separated by one blank line.):
 Coins: [ticker 1], [ticker 2], ...
 Sentiment: [percentage]%
 
