@@ -100,8 +100,19 @@ Negative values (-100% to -1%) indicate Bearish sentiment.
 Positive values (1% to 100%) indicate Bullish sentiment.
 A score of 0% means completely neutral sentiment.
 Consider both direct (crypto-specific) and indirect (macro/geopolitical) factors influencing sentiment:
-Bearish Sentiment (-100% to -1%): Look for context like "crash," "sell-off," "fear," "regulatory crackdown," "decline," "war," "uncertainty," "economic slowdown," "liquidity issues," "bank failures."
-Bullish Sentiment (1% to 100%): Look for context like "rally," "bullish," "uptrend," "breakout," "growth," "institutional adoption," "rate cuts," "fiscal stimulus," "ETF approval", "deal", "partnership."
+Bearish Sentiment (-100% to -1%): Look for context like "crash," "sell-off," "fear," "regulatory crackdown," "decline," "war," "uncertainty," 
+"economic slowdown," "liquidity issues," "bank failures", "dump," "collapse," "downtrend," "bear market," "capitulation," "recession," "stagflation," 
+"deflation," "bubble burst," "outflows," "sell pressure", "interest rate hike," "quantitative tightening," "high inflation," "debt crisis," 
+"unemployment spike," "GDP contraction," "yield curve inversion", "rug pull," "liquidation cascade," "exchange insolvency," "hacked," "exploit," "FUD," 
+"whale dumping," "token unlock," "sell wall," "depegging," "regulatory scrutiny", "sanctions," "trade war," "black swan event," "political instability," 
+"supply chain disruptions," "energy crisis," "default risk", "fear index rising," "sentiment shift negative," "risk-off environment."
+Bullish Sentiment (1% to 100%): Look for context like "rally," "bullish," "uptrend," "breakout," "growth," "institutional adoption," "rate cuts," 
+"fiscal stimulus," "ETF approval", "deal", "partnership", "endorsement", "optimism", "interest", "price surge," "pump," "ATH (all-time high)," "parabolic," 
+"breakout confirmation," "FOMO," "whale accumulation," "supply squeeze," "buy pressure," "strong support", "rate cut," "QE (quantitative easing)," 
+"economic recovery," "disinflation," "GDP growth," "strong labor market", "token burn," "supply shock," "staking rewards," "mainnet launch," "protocol upgrade," 
+"airdrops," "institutional investment," "on-chain activity spike," "exchange listing," "layer 2 adoption," "TVL (Total Value Locked) increase", 
+"regulatory clarity," "mass adoption," "government support," "nation-state adoption," "market-friendly policies", "greed index rising," "retail interest," 
+"positive funding rates," "risk-on environment."
 Only use one sentiment side per response (either positive or negative, never both). Provide a clear explanation for the assigned sentiment score.
 STRICTLY format the response as follows (DO NOT DEVIATE and Coins and Sentiment are on separate lines without extra space. Sentiment and Explanation are separated by one blank line.):
 Coins: [ticker 1], [ticker 2], ...
