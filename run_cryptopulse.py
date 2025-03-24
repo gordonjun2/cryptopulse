@@ -365,16 +365,21 @@ async def message_processor():
                                         if symbol in perps_tokens:
                                             # Check if symbol is already in queue or being processed
                                             if symbol in processing_symbols or symbol in symbol_queue._queue:
-                                                print(
-                                                    f"{symbol} is already in queue or being processed, skipping...\n",
-                                                    flush=True)
+                                                text = f"{symbol} is already in queue or being processed for a trade, skipping...\n"
+                                                print(text, flush=True)
+                                                await replied_messsage.reply_text(
+                                                    text, quote=True)
                                             else:
+                                                text = f"Ticker {symbol} found in Binance API, hence a trade will be executed.\n"
+                                                print(text, flush=True)
+                                                trade_replied_messsage = await replied_messsage.reply_text(
+                                                    text, quote=True)
                                                 print(
                                                     f"Adding {symbol} to the queue\n",
                                                     flush=True)
                                                 await symbol_queue.put(
                                                     (symbol, direction,
-                                                     replied_messsage))
+                                                     trade_replied_messsage))
 
                                         else:
                                             not_found_tickers.append(symbol)
