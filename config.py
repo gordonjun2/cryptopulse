@@ -58,6 +58,8 @@ CHAT_ID_LIST = [
     -1001651524056,
     # -1001556054753,
     -1002457358877,
+    -1002080590083,
+    -1001138057410,
     -4698918931,
     -1002638442145,
 ]
@@ -76,6 +78,8 @@ CHAT_ID_LIST = [
     Zoomer News: -1001651524056
     Watcher Guru: -1001556054753
     Solid Intel: -1002457358877
+    PhoenixNews (Only Important): -1002080590083
+    ⚡️Followin 闪电快讯｜聚合全球币圈大小事: -1001138057410
     Crypto Fake News: -4698918931
     Crypto Fake News Channel: -1002638442145
 '''
@@ -112,7 +116,7 @@ Bullish Sentiment (1% to 100%): Look for context like "rally," "bullish," "uptre
 "economic recovery," "disinflation," "GDP growth," "strong labor market", "token burn," "supply shock," "staking rewards," "mainnet launch," "protocol upgrade," 
 "airdrops," "institutional investment," "on-chain activity spike," "exchange listing," "layer 2 adoption," "TVL (Total Value Locked) increase", 
 "regulatory clarity," "mass adoption," "government support," "nation-state adoption," "market-friendly policies", "greed index rising," "retail interest," 
-"positive funding rates," "risk-on environment."
+"positive funding rates," "risk-on environment." Someone famous liking a certain coin is also a bullish signal.
 Only use one sentiment side per response (either positive or negative, never both). Provide a clear explanation for the assigned sentiment score.
 STRICTLY format the response as follows (DO NOT DEVIATE and Coins and Sentiment are on separate lines without extra space. Sentiment and Explanation are separated by one blank line.):
 Coins: [ticker 1], [ticker 2], ...
