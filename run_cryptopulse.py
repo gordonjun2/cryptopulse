@@ -370,7 +370,7 @@ async def message_processor():
                                                 await replied_messsage.reply_text(
                                                     text, quote=True)
                                             else:
-                                                text = f"Ticker {symbol} found in Binance API, hence a trade will be executed.\n"
+                                                text = f"Ticker {symbol} found in Binance API, hence a trade will be executed now. It will be closed in {HODL_TIME / 60:,.2f} minutes. \n"
                                                 print(text, flush=True)
                                                 trade_replied_messsage = await replied_messsage.reply_text(
                                                     text, quote=True)
