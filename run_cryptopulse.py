@@ -7,6 +7,8 @@ import telebot
 import aiohttp
 import asyncio
 import textwrap
+from google import genai
+from google.genai import types
 from pyrogram import Client, utils, filters, idle
 import binance.client
 from binance.exceptions import BinanceAPIException
@@ -14,7 +16,8 @@ from config import (TELEGRAM_API_KEY, TELEGRAM_HASH, CHAT_ID_LIST,
                     MAIN_CHAT_ID, BITDEER_AI_BEARER_TOKEN, PROMPT, MAX_RETRIES,
                     RETRY_AFTER, INITIAL_CAPITAL, LEVERAGE, HODL_TIME,
                     TRADE_SENTIMENT_THRESHOLD, BINANCE_TESTNET_API_KEY,
-                    BINANCE_TESTNET_API_SECRET, BINANCE_TESTNET_FLAG)
+                    BINANCE_TESTNET_API_SECRET, BINANCE_TESTNET_FLAG,
+                    LLM_OPTION, GEMINI_API_KEY)
 import urllib3
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -277,11 +280,17 @@ app = Client("text_listener", TELEGRAM_API_KEY, TELEGRAM_HASH)
 # [Pyrogram] Settings
 message_queue = asyncio.Queue()
 
-url = "https://api-inference.bitdeer.ai/v1/chat/completions"
-headers = {
-    "Authorization": "Bearer " + BITDEER_AI_BEARER_TOKEN,
-    "Content-Type": "application/json"
-}
+if LLM_OPTION.upper() == "BITDEER":
+    print("Using Bitdeer AI LLM API...\n")
+    url = "https://api-inference.bitdeer.ai/v1/chat/completions"
+    headers = {
+        "Authorization": "Bearer " + BITDEER_AI_BEARER_TOKEN,
+        "Content-Type": "application/json"
+    }
+else:
+    print("Using Gemini LLM API...\n")
+    url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=' + GEMINI_API_KEY
+    headers = {'Content-Type': 'application/json'}
 
 
 # [Pyrogram] LLM API
@@ -290,29 +299,47 @@ async def message_processor():
         while True:
             message = await message_queue.get()
 
-            data = {
-                "model":
-                "deepseek-ai/DeepSeek-V3",
-                "messages": [{
-                    "role": "system",
-                    "content": PROMPT
-                }, {
-                    "role": "user",
-                    "content": message.text or message.caption
-                }],
-                "max_tokens":
-                1024,
-                "temperature":
-                1,
-                "frequency_penalty":
-                0,
-                "presence_penalty":
-                0,
-                "top_p":
-                1,
-                "stream":
-                False
-            }
+            if LLM_OPTION.upper() == "BITDEER":
+                data = {
+                    "model":
+                    "deepseek-ai/DeepSeek-V3",
+                    "messages": [{
+                        "role": "system",
+                        "content": PROMPT
+                    }, {
+                        "role": "user",
+                        "content": message.text or message.caption
+                    }],
+                    "max_tokens":
+                    1024,
+                    "temperature":
+                    1,
+                    "frequency_penalty":
+                    0,
+                    "presence_penalty":
+                    0,
+                    "top_p":
+                    1,
+                    "stream":
+                    False
+                }
+            else:
+                data = {
+                    "contents": [{
+                        "parts": [{
+                            "text": message.text or message.caption
+                        }]
+                    }],
+                    "system_instruction": {
+                        "parts": [{
+                            "text": PROMPT
+                        }]
+                    },
+                    "generationConfig": {
+                        "temperature": 0.1,
+                        "maxOutputTokens": 1024,
+                    }
+                }
 
             try:
                 async with session.post(url, headers=headers,
@@ -321,81 +348,86 @@ async def message_processor():
                         response_json = await response.json()
                         print(f"API Response: {response_json}\n")
 
-                        choices = response_json.get('choices', [])
-                        if choices:
-                            content = choices[0].get('message',
-                                                     {}).get('content', '')
+                        if LLM_OPTION == 'BITDEER':
+                            choices = response_json.get('choices', [])
+                            if choices:
+                                content = choices[0].get('message', {}).get(
+                                    'content', '')
 
-                            if content:
-                                content = content.replace(
-                                    ' Bullish', '\nBullish')
-                                if use_bot:
-                                    # replied_messsage = bot.send_message(
-                                    #     message.chat.id,
-                                    #     content,
-                                    #     reply_to_message_id=message.id)
-                                    replied_messsage = bot.send_message(
-                                        message.chat.id, content)
-                                else:
-                                    replied_messsage = await message.reply_text(
-                                        content, quote=True)
-                                print(f"Replied with content:\n{content}\n")
+                        else:
+                            candidates = response_json.get('candidates', [])
+                            if candidates:
+                                content = candidates[0].get('content', {}).get(
+                                    'parts', [{}])[0].get('text', '')
 
-                                # Extract sentiment from the content
-                                sentiment_match = re.search(
-                                    r"Sentiment:\s*([-+]?\d+)%", content)
-                                sentiment = float(sentiment_match.group(
-                                    1)) if sentiment_match else 0
+                        if content:
+                            if use_bot:
+                                # replied_messsage = bot.send_message(
+                                #     message.chat.id,
+                                #     content,
+                                #     reply_to_message_id=message.id)
+                                replied_messsage = bot.send_message(
+                                    message.chat.id, content)
+                            else:
+                                replied_messsage = await message.reply_text(
+                                    content, quote=True)
+                            print(f"Replied with content:\n{content}\n")
 
-                                if abs(sentiment) >= TRADE_SENTIMENT_THRESHOLD:
-                                    direction = "LONG" if sentiment > 0 else "SHORT"
+                            # Extract sentiment from the content
+                            sentiment_match = re.search(
+                                r"Sentiment:\s*([-+]?\d+)%", content)
+                            sentiment = float(sentiment_match.group(
+                                1)) if sentiment_match else 0
 
-                                    # Extract symbols from the content
-                                    matches = re.findall(
-                                        r"Coins:\s*([\w, /]+)", content)
-                                    symbols = matches[0].replace(
-                                        " ", "").split(",") if matches else []
-                                    not_found_tickers = []
-                                    for symbol in symbols:
-                                        if symbol == 'N/A' or not symbol:
-                                            continue
-                                        if "USDT" not in symbol:
-                                            symbol += "USDT"
-                                        # Check if ticker can be traded in Binance
-                                        if symbol in perps_tokens:
-                                            # Check if symbol is already in queue or being processed
-                                            if symbol in processing_symbols or symbol in symbol_queue._queue:
-                                                text = f"{symbol} is already in queue or being processed for a trade, skipping...\n"
-                                                print(text, flush=True)
-                                                await replied_messsage.reply_text(
-                                                    text, quote=True)
-                                            else:
-                                                text = f"Ticker {symbol} found in Binance API, hence a trade will be executed now. It will be closed in {HODL_TIME / 60:,.2f} minutes. \n"
-                                                print(text, flush=True)
-                                                trade_replied_messsage = await replied_messsage.reply_text(
-                                                    text, quote=True)
-                                                print(
-                                                    f"Adding {symbol} to the queue\n",
-                                                    flush=True)
-                                                await symbol_queue.put(
-                                                    (symbol, direction,
-                                                     trade_replied_messsage))
+                            if abs(sentiment) >= TRADE_SENTIMENT_THRESHOLD:
+                                direction = "LONG" if sentiment > 0 else "SHORT"
 
+                                # Extract symbols from the content
+                                matches = re.findall(r"Coins:\s*([\w, /]+)",
+                                                     content)
+                                symbols = matches[0].replace(
+                                    " ", "").split(",") if matches else []
+                                not_found_tickers = []
+                                for symbol in symbols:
+                                    if symbol == 'N/A' or not symbol:
+                                        continue
+                                    if "USDT" not in symbol:
+                                        symbol += "USDT"
+                                    # Check if ticker can be traded in Binance
+                                    if symbol in perps_tokens:
+                                        # Check if symbol is already in queue or being processed
+                                        if symbol in processing_symbols or symbol in symbol_queue._queue:
+                                            text = f"{symbol} is already in queue or being processed for a trade, skipping...\n"
+                                            print(text, flush=True)
+                                            await replied_messsage.reply_text(
+                                                text, quote=True)
                                         else:
-                                            not_found_tickers.append(symbol)
+                                            text = f"Ticker {symbol} found in Binance API, hence a trade will be executed now. It will be closed in {HODL_TIME / 60:,.2f} minutes. \n"
+                                            print(text, flush=True)
+                                            trade_replied_messsage = await replied_messsage.reply_text(
+                                                text, quote=True)
+                                            print(
+                                                f"Adding {symbol} to the queue\n",
+                                                flush=True)
+                                            await symbol_queue.put(
+                                                (symbol, direction,
+                                                 trade_replied_messsage))
 
-                                    if not_found_tickers:
-                                        not_found_tickers_string = ", ".join(
-                                            not_found_tickers)
-                                        text = f"Ticker(s) {not_found_tickers_string} not found in Binance API, hence no trade is executed.\n"
-                                        print(text)
-                                        await replied_messsage.reply_text(
-                                            text, quote=True)
+                                    else:
+                                        not_found_tickers.append(symbol)
 
-                                else:
-                                    print(
-                                        "Trade sentiment is below the threshold, hence no trade is executed.\n"
-                                    )
+                                if not_found_tickers:
+                                    not_found_tickers_string = ", ".join(
+                                        not_found_tickers)
+                                    text = f"Ticker(s) {not_found_tickers_string} not found in Binance API, hence no trade is executed.\n"
+                                    print(text)
+                                    await replied_messsage.reply_text(
+                                        text, quote=True)
+
+                            else:
+                                print(
+                                    "Trade sentiment is below the threshold, hence no trade is executed.\n"
+                                )
 
                     else:
                         print(

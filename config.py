@@ -22,11 +22,13 @@ if cfg:
         TELEGRAM_HASH = ''
         TELEGRAM_BOT_TOKEN = ''
         MAIN_CHAT_ID = ''
-    if cfg.has_section('bitdeer'):
-        bitdeer = dict(cfg.items('bitdeer'))
-        BITDEER_AI_BEARER_TOKEN = bitdeer.get('bitdeer_ai_bearer_token', '')
+    if cfg.has_section('llm'):
+        llm = dict(cfg.items('llm'))
+        BITDEER_AI_BEARER_TOKEN = llm.get('bitdeer_ai_bearer_token', '')
+        GEMINI_API_KEY = llm.get('gemini_api_key', '')
     else:
         BITDEER_AI_BEARER_TOKEN = ''
+        GEMINI_API_KEY = ''
     if cfg.has_section('binance'):
         binance = dict(cfg.items('binance'))
         BINANCE_TESTNET_API_KEY = binance.get('binance_testnet_api_key', '')
@@ -41,6 +43,7 @@ else:
     TELEGRAM_BOT_TOKEN = ''
     MAIN_CHAT_ID = ''
     BITDEER_AI_BEARER_TOKEN = ''
+    GEMINI_API_KEY = ''
     BINANCE_TESTNET_API_KEY = ''
     BINANCE_TESTNET_API_SECRET = ''
 
@@ -84,6 +87,7 @@ CHAT_ID_LIST = [
     Crypto Fake News Channel: -1002638442145
 '''
 
+LLM_OPTION = "GEMINI"  # "BITDEER" or "GEMINI"
 MAX_RETRIES = 5
 RETRY_AFTER = 2
 INITIAL_CAPITAL = 3000  # USD
