@@ -3,3 +3,4 @@ aiohttp
 pytelegrambotapi==4.6.0
 pyrotgfork
 python-binance
+google-genai
