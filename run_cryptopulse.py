@@ -558,31 +558,36 @@ async def cmd_pnl(message: Message,
                   pnl_width: int = 12):
     """Handle /pnl command, send current data to Telegram group."""
     data = await load_data()
-    renamed_data = []
-    total_pnl = 0
-    for chat_id, pnl in data.items():
-        chat_name = chat_id_name_dict.get(chat_id, chat_id)
-        chat_name = re.sub(r'[^A-Za-z0-9\s]', '', chat_name)
-        chat_name = re.sub(r'\s+', ' ', chat_name)
-        chat_name = chat_name.strip()
-        renamed_data.append((chat_name, pnl))
-        total_pnl += pnl
-    sorted_data = sorted(renamed_data, key=lambda x: x[0])
 
-    table = pt.PrettyTable(['Chat Name', 'PNL (in USD)'])
-    table.align['Chat Name'] = 'l'
-    table.align['PNL (in USD)'] = 'r'
-    table.max_width['Chat Name'] = chat_name_width
-    table.max_width['PNL (in USD)'] = pnl_width
+    if data:
+        renamed_data = []
+        total_pnl = 0
+        for chat_id, pnl in data.items():
+            chat_name = chat_id_name_dict.get(chat_id, chat_id)
+            chat_name = re.sub(r'[^A-Za-z0-9\s]', '', chat_name)
+            chat_name = re.sub(r'\s+', ' ', chat_name)
+            chat_name = chat_name.strip()
+            renamed_data.append((chat_name, pnl))
+            total_pnl += pnl
+        sorted_data = sorted(renamed_data, key=lambda x: x[0])
 
-    table_title = "Current PNL Data"
-    for chat_name, pnl in sorted_data:
-        table.add_row([chat_name, f'{pnl:.2f}'])
-    table.add_row(["-" * chat_name_width, "-" * pnl_width])
-    table.add_row(["Total PNL", f'{total_pnl:.2f}'])
+        table = pt.PrettyTable(['Chat Name', 'PNL (in USD)'])
+        table.align['Chat Name'] = 'l'
+        table.align['PNL (in USD)'] = 'r'
+        table.max_width['Chat Name'] = chat_name_width
+        table.max_width['PNL (in USD)'] = pnl_width
 
-    await message.answer(f'<b>{table_title}:</b>\n<pre>{table}</pre>',
-                         parse_mode=ParseMode.HTML)
+        table_title = "Current PNL Data"
+        for chat_name, pnl in sorted_data:
+            table.add_row([chat_name, f'{pnl:.2f}'])
+        table.add_row(["-" * chat_name_width, "-" * pnl_width])
+        table.add_row(["Total PNL", f'{total_pnl:.2f}'])
+
+        await message.answer(f'<b>{table_title}:</b>\n<pre>{table}</pre>',
+                             parse_mode=ParseMode.HTML)
+
+    else:
+        await message.answer("No data available.")
 
 
 # [Aiogram] /help command handler
