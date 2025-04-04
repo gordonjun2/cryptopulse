@@ -182,3 +182,4 @@ private.ini
 *.session-journal
 *.session-shm
 *.session-wal
+pnl_data.json

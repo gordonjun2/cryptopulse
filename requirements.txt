@@ -5,3 +5,5 @@ pyrotgfork
 python-binance
 google-genai
 aiofiles
+aiogram
+prettytable

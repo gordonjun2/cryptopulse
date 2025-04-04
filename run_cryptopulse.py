@@ -7,9 +7,16 @@ import telebot
 import aiohttp
 import asyncio
 import textwrap
-from google import genai
-from google.genai import types
+import json
+import aiofiles
+import prettytable as pt
 from pyrogram import Client, utils, filters, idle
+from aiogram import Bot, Dispatcher, Router, html
+from aiogram.utils import markdown as ParseMode
+from aiogram.client.default import DefaultBotProperties
+from aiogram.enums import ParseMode
+from aiogram.filters import CommandStart, Command
+from aiogram.types import Message, BotCommand
 import binance.client
 from binance.exceptions import BinanceAPIException
 from config import (TELEGRAM_API_KEY, TELEGRAM_HASH, CHAT_ID_LIST,
@@ -17,7 +24,7 @@ from config import (TELEGRAM_API_KEY, TELEGRAM_HASH, CHAT_ID_LIST,
                     RETRY_AFTER, INITIAL_CAPITAL, LEVERAGE, HODL_TIME,
                     TRADE_SENTIMENT_THRESHOLD, BINANCE_TESTNET_API_KEY,
                     BINANCE_TESTNET_API_SECRET, BINANCE_TESTNET_FLAG,
-                    LLM_OPTION, GEMINI_API_KEY)
+                    LLM_OPTION, GEMINI_API_KEY, TELEGRAM_BOT_TOKEN)
 import urllib3
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -113,7 +120,7 @@ def place_sell_order(symbol, order_size):
 
 
 # [Binance] Function to simulate a trading operation for a single ticker
-async def trade(symbol, direction, message):
+async def trade(symbol, direction, message, original_chat_id):
     base_symbol = symbol.replace("USDT", "")
 
     print(f"\nTrading Parameters:")
@@ -210,6 +217,12 @@ async def trade(symbol, direction, message):
             __After Capital:__ ${final_capital:.2f} ({percentage_gained:+.2f}%)
             """)
 
+            new_pnl_data = {
+                str(original_chat_id):
+                final_capital - corrected_initial_capital
+            }
+
+            await update_data(new_pnl_data)
             await message.reply_text(content, quote=True)
         else:
             print(f"Sell order failed for {symbol}\n", flush=True)
@@ -227,20 +240,20 @@ async def worker():
         if item is None:
             break
 
-        symbol, direction, message = item
+        symbol, direction, message, original_chat_id = item
 
         processing_symbols.add(symbol)
 
         # Execute trade
-        await trade(symbol, direction, message)
+        await trade(symbol, direction, message, original_chat_id)
 
         symbol_queue.task_done()
 
 
-# [Telebot] Client
+# [Telebot (Synchronous)] Client
 # bot = telebot.TeleBot(TELEGRAM_BOT_TOKEN, threaded=False)
 bot = telebot.TeleBot('', threaded=False)
-print(f"Checking Telegram Bot status...")
+print(f"Checking Telegram Bot status...\n")
 
 try:
     bot_info = bot.get_me()
@@ -259,6 +272,18 @@ except Exception as e:
     print(f"Telegram Bot cannot be used: {e}")
     print(f"User will reply to messages instead...\n")
     use_bot = False
+
+# [Aiogram (Asynchronous)] Client (this will be used instead of the synchronous bot)
+bot = Bot(token=TELEGRAM_BOT_TOKEN,
+          default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+
+# [Aiogram] Settings
+FILE_PATH = "pnl_data.json"
+lock = asyncio.Lock()
+dp = Dispatcher()
+router = Router()
+dp.include_router(router)
+chat_id_name_dict = {}
 
 
 # [Pyrogram] Monkey Patch
@@ -297,7 +322,7 @@ else:
 async def message_processor():
     async with aiohttp.ClientSession() as session:
         while True:
-            message = await message_queue.get()
+            forwarded_message, message = await message_queue.get()
 
             if LLM_OPTION.upper() == "BITDEER":
                 data = {
@@ -307,8 +332,10 @@ async def message_processor():
                         "role": "system",
                         "content": PROMPT
                     }, {
-                        "role": "user",
-                        "content": message.text or message.caption
+                        "role":
+                        "user",
+                        "content":
+                        forwarded_message.text or forwarded_message.caption
                     }],
                     "max_tokens":
                     1024,
@@ -327,7 +354,8 @@ async def message_processor():
                 data = {
                     "contents": [{
                         "parts": [{
-                            "text": message.text or message.caption
+                            "text":
+                            forwarded_message.text or forwarded_message.caption
                         }]
                     }],
                     "system_instruction": {
@@ -363,13 +391,13 @@ async def message_processor():
                         if content:
                             if use_bot:
                                 # replied_messsage = bot.send_message(
-                                #     message.chat.id,
+                                #     forwarded_message.chat.id,
                                 #     content,
-                                #     reply_to_message_id=message.id)
+                                #     reply_to_message_id=forwarded_message.id)
                                 replied_messsage = bot.send_message(
-                                    message.chat.id, content)
+                                    forwarded_message.chat.id, content)
                             else:
-                                replied_messsage = await message.reply_text(
+                                replied_messsage = await forwarded_message.reply_text(
                                     content, quote=True)
                             print(f"Replied with content:\n{content}\n")
 
@@ -411,7 +439,8 @@ async def message_processor():
                                                 flush=True)
                                             await symbol_queue.put(
                                                 (symbol, direction,
-                                                 trade_replied_messsage))
+                                                 trade_replied_messsage,
+                                                 message.chat.id))
 
                                     else:
                                         not_found_tickers.append(symbol)
@@ -450,9 +479,134 @@ async def my_handler(client, message):
                                                       )
             print("Message forwarded successfully.\n")
 
-            await message_queue.put(forwarded_message)
+            await message_queue.put((forwarded_message, message))
         except Exception as e:
             print(f"Error forwarding message: {e}\n")
+
+
+# [Aiogram] Check if the bot is a member of the chat
+async def check_bot_membership():
+    try:
+        bot_info = await bot.get_me()
+        bot_member = await bot.get_chat_member(MAIN_CHAT_ID, bot_info.id)
+
+        if bot_member.status not in ["administrator", "member"]:
+            print("Bot is not in the chat MAIN_CHAT_ID. Exiting...\n")
+            await bot.session.close()
+            asyncio.get_event_loop().stop()
+        else:
+            print("Bot is a member of the chat MAIN_CHAT_ID. Continuing...\n")
+
+    except Exception as e:
+        print(f"Error checking chat membership: {e}\n")
+        await bot.session.close()
+        asyncio.get_event_loop().stop()
+
+
+# Load JSON data asynchronously
+async def load_data():
+    """Load JSON data asynchronously without acquiring the lock."""
+    try:
+        async with aiofiles.open(FILE_PATH, "r") as f:
+            contents = await f.read()
+            return json.loads(contents)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+
+# Save JSON data asynchronously
+async def save_data(data):
+    """Save JSON data asynchronously."""
+    async with aiofiles.open(FILE_PATH, "w") as f:
+        await f.write(json.dumps(data, indent=4))
+
+
+# Update JSON data asynchronously
+async def update_data(new_data):
+    """Load, update by summing values, and save JSON data with a lock."""
+    async with lock:
+        data = await load_data()
+        key, value = list(new_data.items())[0]
+        data[key] = round(data.get(key, 0) + value, 2)
+        await save_data(data)
+
+
+# [Aiogram] Set bot commands
+async def set_commands():
+    commands = [
+        BotCommand(
+            command="/pnl",
+            description="Displays the current PNL data from Telegram channels."
+        ),
+        BotCommand(command="/help",
+                   description="Displays available commands."),
+    ]
+
+    await bot.set_my_commands(commands)
+
+
+# [Aiogram] /start command handler
+@router.message(CommandStart())
+async def command_start_handler(message: Message) -> None:
+    await message.answer(f"Hello, {html.bold(message.from_user.full_name)}!")
+
+
+# [Aiogram] /pnl command handler
+@router.message(Command("pnl"))
+async def cmd_pnl(message: Message,
+                  chat_name_width: int = 17,
+                  pnl_width: int = 12):
+    """Handle /pnl command, send current data to Telegram group."""
+    data = await load_data()
+    renamed_data = []
+    total_pnl = 0
+    for chat_id, pnl in data.items():
+        chat_name = chat_id_name_dict.get(chat_id, chat_id)
+        chat_name = re.sub(r'[^A-Za-z0-9\s]', '', chat_name)
+        chat_name = re.sub(r'\s+', ' ', chat_name)
+        chat_name = chat_name.strip()
+        renamed_data.append((chat_name, pnl))
+        total_pnl += pnl
+    sorted_data = sorted(renamed_data, key=lambda x: x[0])
+
+    table = pt.PrettyTable(['Chat Name', 'PNL (in USD)'])
+    table.align['Chat Name'] = 'l'
+    table.align['PNL (in USD)'] = 'r'
+    table.max_width['Chat Name'] = chat_name_width
+    table.max_width['PNL (in USD)'] = pnl_width
+
+    table_title = "Current PNL Data"
+    for chat_name, pnl in sorted_data:
+        table.add_row([chat_name, f'{pnl:.2f}'])
+    table.add_row(["-" * chat_name_width, "-" * pnl_width])
+    table.add_row(["Total PNL", f'{total_pnl:.2f}'])
+
+    await message.answer(f'<b>{table_title}:</b>\n<pre>{table}</pre>',
+                         parse_mode=ParseMode.HTML)
+
+
+# [Aiogram] /help command handler
+@router.message(Command("help"))
+async def cmd_help(message: Message):
+    """Handle /help command, list all available commands."""
+    help_message = (
+        "Here are the available commands:\n\n"
+        "/pnl - Displays the current PNL data (a JSON with PNLs from different Telegram channels and their total PNL).\n\n"
+        "/help - Displays this help message with a list of available commands."
+    )
+    await message.answer(help_message)
+
+
+# [Pyrogram] Get chat ID and name dictionary
+async def get_chat_id_name_dict():
+    for chat_id in CHAT_ID_LIST:
+        chat_id_str = str(chat_id)
+        try:
+            chat_info = await app.get_chat(chat_id)
+            chat_id_name_dict[chat_id_str] = chat_info.title
+        except Exception as e:
+            chat_id_name_dict[chat_id_str] = chat_id_str
+            continue
 
 
 def signal_handler(sig, frame):
@@ -468,10 +622,19 @@ signal.signal(signal.SIGTSTP, signal_handler)  # SIGTSTP for Ctrl + Z
 
 
 async def main():
-    print("Starting bot and trade system...")
+    print("Starting bot and trade system...\n")
 
     # Start Pyrogram
     await app.start()
+
+    # Check if the bot is a member of the chat
+    await check_bot_membership()
+
+    if asyncio.get_event_loop().is_running() is False:
+        return
+
+    # Get chat ID and chat name dictionary
+    await get_chat_id_name_dict()
 
     # Start worker tasks for trading system
     cpu_allocated = max(1, os.cpu_count() // 2)
@@ -480,6 +643,12 @@ async def main():
     # Start Pyrogram-related tasks
     bot_task = asyncio.create_task(message_processor())
     idle_task = asyncio.create_task(idle())
+
+    # Set bot commands
+    bot_commands_task = asyncio.create_task(set_commands())
+
+    # Start polling for bot
+    tg_bot_task = asyncio.create_task(dp.start_polling(bot))
 
     # Program will now keep running forever, waiting for items to be added to the queue
     try:
@@ -495,7 +664,11 @@ async def main():
             await symbol_queue.put(None)
 
     # Wait for workers and tasks to finish
-    await asyncio.gather(*workers, bot_task, idle_task)
+    await asyncio.gather(*workers, bot_task, idle_task, bot_commands_task,
+                         tg_bot_task)
+
+    # Stop TG bot
+    await bot.session.close()
 
     # Stop Pyrogram
     await app.stop()
