@@ -183,3 +183,4 @@ private.ini
 *.session-shm
 *.session-wal
 pnl_data.json
+stats_data.json
