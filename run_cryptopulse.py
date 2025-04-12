@@ -217,12 +217,12 @@ async def trade(symbol, direction, message, original_chat_id):
             __After Capital:__ ${final_capital:.2f} ({percentage_gained:+.2f}%)
             """)
 
-            new_pnl_data = {
-                str(original_chat_id):
-                final_capital - corrected_initial_capital
-            }
+            pnl = final_capital - corrected_initial_capital
 
-            await update_data(new_pnl_data)
+            new_pnl_data = {str(original_chat_id): pnl}
+
+            await update_pnl_data(new_pnl_data)
+            await update_stats_data(pnl)
             await message.reply_text(content, quote=True)
         else:
             print(f"Sell order failed for {symbol}\n", flush=True)
@@ -278,7 +278,8 @@ bot = Bot(token=TELEGRAM_BOT_TOKEN,
           default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 
 # [Aiogram] Settings
-FILE_PATH = "pnl_data.json"
+PNL_FILE_PATH = "pnl_data.json"
+STATS_FILE_PATH = "stats_data.json"
 lock = asyncio.Lock()
 dp = Dispatcher()
 router = Router()
@@ -504,7 +505,7 @@ async def check_bot_membership():
 
 
 # Load JSON data asynchronously
-async def load_data():
+async def load_data(FILE_PATH):
     """Load JSON data asynchronously without acquiring the lock."""
     try:
         async with aiofiles.open(FILE_PATH, "r") as f:
@@ -515,20 +516,42 @@ async def load_data():
 
 
 # Save JSON data asynchronously
-async def save_data(data):
+async def save_data(data, FILE_PATH):
     """Save JSON data asynchronously."""
     async with aiofiles.open(FILE_PATH, "w") as f:
         await f.write(json.dumps(data, indent=4))
 
 
 # Update JSON data asynchronously
-async def update_data(new_data):
+async def update_pnl_data(new_data):
     """Load, update by summing values, and save JSON data with a lock."""
     async with lock:
-        data = await load_data()
+        data = await load_data(PNL_FILE_PATH)
         key, value = list(new_data.items())[0]
         data[key] = round(data.get(key, 0) + value, 2)
-        await save_data(data)
+        await save_data(data, PNL_FILE_PATH)
+
+
+async def update_stats_data(pnl):
+    """Load, update by summing values, and save JSON data with a lock."""
+    async with lock:
+        data = await load_data(STATS_FILE_PATH)
+        prev_max_gain = data.get("Maximum Gain", 0)
+        prev_max_drawdown = data.get("Maximum Drawdown", 0)
+        prev_avg_gain = data.get("Average Gain", 0)
+        total_no_of_trades = data.get("Total No. of Trades", 0)
+
+        if pnl >= 0:
+            data["Maximum Gain"] = round(max(prev_max_gain, pnl), 2)
+        else:
+            data["Maximum Drawdown"] = round(min(prev_max_drawdown, pnl), 2)
+
+        data["Average Gain"] = round(
+            ((prev_avg_gain * total_no_of_trades) + pnl) /
+            (total_no_of_trades + 1), 2)
+        data["Total No. of Trades"] = total_no_of_trades + 1
+
+        await save_data(data, STATS_FILE_PATH)
 
 
 # [Aiogram] Set bot commands
@@ -538,6 +561,8 @@ async def set_commands():
             command="/pnl",
             description="Displays the current PNL data from Telegram channels."
         ),
+        BotCommand(command="/stats",
+                   description="Displays the current trading statistics."),
         BotCommand(command="/help",
                    description="Displays available commands."),
     ]
@@ -557,7 +582,7 @@ async def cmd_pnl(message: Message,
                   chat_name_width: int = 17,
                   pnl_width: int = 12):
     """Handle /pnl command, send current data to Telegram group."""
-    data = await load_data()
+    data = await load_data(PNL_FILE_PATH)
 
     if data:
         renamed_data = []
@@ -582,6 +607,41 @@ async def cmd_pnl(message: Message,
             table.add_row([chat_name, f'{pnl:.2f}'])
         table.add_row(["-" * chat_name_width, "-" * pnl_width])
         table.add_row(["Total PNL", f'{total_pnl:.2f}'])
+
+        await message.answer(f'<b>{table_title}:</b>\n<pre>{table}</pre>',
+                             parse_mode=ParseMode.HTML)
+
+    else:
+        await message.answer("No data available.")
+
+
+# [Aiogram] /stats command handler
+@router.message(Command("stats"))
+async def cmd_pnl(message: Message,
+                  chat_name_width: int = 17,
+                  pnl_width: int = 12):
+    """Handle /pnl command, send current data to Telegram group."""
+    data = await load_data(STATS_FILE_PATH)
+
+    if data:
+        ordered_data = [('Maximum Gain', data.get("Maximum Gain", 0)),
+                        ('Maximum Drawdown', data.get("Maximum Drawdown", 0)),
+                        ('Average Gain', data.get("Average Gain", 0)),
+                        ('Total No. of Trades',
+                         data.get("Total No. of Trades", 0))]
+
+        table = pt.PrettyTable(['Statistics', 'Value'])
+        table.align['Statistics'] = 'l'
+        table.align['Value'] = 'r'
+        table.max_width['Statistics'] = chat_name_width
+        table.max_width['Value'] = pnl_width
+
+        table_title = "Current Trading Statistics"
+        for stat, value in ordered_data:
+            if stat != 'Total No. of Trades':
+                table.add_row([stat, f'{value:.2f} USD'])
+            else:
+                table.add_row([stat, f'{value}'])
 
         await message.answer(f'<b>{table_title}:</b>\n<pre>{table}</pre>',
                              parse_mode=ParseMode.HTML)
