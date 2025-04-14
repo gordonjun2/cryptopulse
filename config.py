@@ -95,6 +95,7 @@ LEVERAGE = 1
 HODL_TIME = 5 * 60  # seconds
 TRADE_SENTIMENT_THRESHOLD = 50  # %
 BINANCE_TESTNET_FLAG = False
+NUM_WORKERS = 100
 
 PROMPT = """
 You are an assistant specialized in extracting cryptocurrencies mentioned in a given text and analyzing the sentiment to generate a prediction.

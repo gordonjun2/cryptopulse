@@ -24,7 +24,8 @@ from config import (TELEGRAM_API_KEY, TELEGRAM_HASH, CHAT_ID_LIST,
                     RETRY_AFTER, INITIAL_CAPITAL, LEVERAGE, HODL_TIME,
                     TRADE_SENTIMENT_THRESHOLD, BINANCE_TESTNET_API_KEY,
                     BINANCE_TESTNET_API_SECRET, BINANCE_TESTNET_FLAG,
-                    LLM_OPTION, GEMINI_API_KEY, TELEGRAM_BOT_TOKEN)
+                    LLM_OPTION, GEMINI_API_KEY, TELEGRAM_BOT_TOKEN,
+                    NUM_WORKERS)
 import urllib3
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -702,8 +703,8 @@ async def main():
     await get_chat_id_name_dict()
 
     # Start worker tasks for trading system
-    cpu_allocated = max(1, os.cpu_count() // 2)
-    workers = [asyncio.create_task(worker()) for _ in range(cpu_allocated)]
+    # cpu_allocated = max(1, os.cpu_count() // 2)
+    workers = [asyncio.create_task(worker()) for _ in range(NUM_WORKERS)]
 
     # Start Pyrogram-related tasks
     bot_task = asyncio.create_task(message_processor())
