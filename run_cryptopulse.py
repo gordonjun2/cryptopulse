@@ -25,8 +25,9 @@ from config import (TELEGRAM_API_KEY, TELEGRAM_HASH, CHAT_ID_LIST,
                     TRADE_SENTIMENT_THRESHOLD, BINANCE_TESTNET_API_KEY,
                     BINANCE_TESTNET_API_SECRET, BINANCE_TESTNET_FLAG,
                     LLM_OPTION, GEMINI_API_KEY, TELEGRAM_BOT_TOKEN,
-                    NUM_WORKERS, ENV)
+                    NUM_WORKERS, ENV, TOP_N_MARKETCAP)
 import urllib3
+from market_cap_tracker import is_top_market_cap, update_market_cap_loop
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -540,6 +541,14 @@ async def message_processor():
                                             symbol += "USDT"
                                         # Check if ticker can be traded in Binance
                                         if symbol in perps_tokens:
+                                            # Check if symbol is in top market cap
+                                            if is_top_market_cap(symbol):
+                                                text = f"{symbol} is in the top {TOP_N_MARKETCAP} market cap list, skipping trade...\n"
+                                                print(text, flush=True)
+                                                await replied_messsage.reply_text(
+                                                    text, quote=True)
+                                                continue
+
                                             # Check if symbol is already in queue or being processed
                                             if symbol in processing_symbols or symbol in pending_symbols:
                                                 text = f"{symbol} is already in queue or being processed for a trade, skipping...\n"
@@ -890,6 +899,16 @@ async def main():
             await app.stop()
             return
 
+        # Start market cap tracker update loop
+        try:
+            market_cap_task = asyncio.create_task(update_market_cap_loop())
+        except Exception as e:
+            print(f"Failed to start market cap tracker: {e}\n")
+            for w in workers:
+                w.cancel()
+            await app.stop()
+            return
+
         # Start Pyrogram-related tasks
         try:
             bot_task = asyncio.create_task(message_processor())
@@ -898,6 +917,7 @@ async def main():
             tg_bot_task = asyncio.create_task(dp.start_polling(bot))
         except Exception as e:
             print(f"Failed to start bot tasks: {e}\n")
+            market_cap_task.cancel()
             for w in workers:
                 w.cancel()
             await app.stop()
@@ -917,6 +937,7 @@ async def main():
             print("Cancelling tasks...\n")
             for w in workers:
                 w.cancel()
+            market_cap_task.cancel()
             bot_task.cancel()
             idle_task.cancel()
             bot_commands_task.cancel()
@@ -925,6 +946,7 @@ async def main():
             # Wait for all tasks to complete
             try:
                 await asyncio.gather(*workers,
+                                     market_cap_task,
                                      bot_task,
                                      idle_task,
                                      bot_commands_task,

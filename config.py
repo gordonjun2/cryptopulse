@@ -39,10 +39,13 @@ if cfg:
         BINANCE_TESTNET_API_KEY = binance.get('binance_testnet_api_key', '')
         BINANCE_TESTNET_API_SECRET = binance.get('binance_testnet_api_secret',
                                                  '')
+        TOP_N_MARKETCAP = int(binance.get('top_n_marketcap', 10))
     else:
         BINANCE_TESTNET_API_KEY = ''
         BINANCE_TESTNET_API_SECRET = ''
+        TOP_N_MARKETCAP = 10
 else:
+    ENV = 'dev'
     TELEGRAM_API_KEY = 0
     TELEGRAM_HASH = ''
     TELEGRAM_BOT_TOKEN = ''
@@ -51,6 +54,7 @@ else:
     GEMINI_API_KEY = ''
     BINANCE_TESTNET_API_KEY = ''
     BINANCE_TESTNET_API_SECRET = ''
+    TOP_N_MARKETCAP = 10
 
 CHAT_ID_LIST = [
     # -1001488075213,
@@ -101,6 +105,7 @@ HODL_TIME = 5 * 60  # seconds
 TRADE_SENTIMENT_THRESHOLD = 50  # %
 BINANCE_TESTNET_FLAG = False
 NUM_WORKERS = 100
+MARKETCAP_UPDATE_INTERVAL = 3600  # seconds
 
 PROMPT = """
 You are an assistant specialized in extracting cryptocurrencies mentioned in a given text and analyzing the sentiment to generate a prediction.

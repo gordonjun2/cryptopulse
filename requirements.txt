@@ -7,3 +7,4 @@ google-genai
 aiofiles
 aiogram
 prettytable
+requests==2.31.0
