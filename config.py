@@ -11,6 +11,11 @@ else:
     cfg = None
 
 if cfg:
+    if cfg.has_section('general'):
+        general = dict(cfg.items('general'))
+        ENV = general.get('env', 'dev')
+    else:
+        ENV = 'dev'
     if cfg.has_section('telegram'):
         telegram = dict(cfg.items('telegram'))
         TELEGRAM_API_KEY = int(telegram.get('telegram_api_key', 0))
