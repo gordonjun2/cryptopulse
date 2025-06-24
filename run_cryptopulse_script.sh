@@ -1,18 +1,43 @@
 #!/bin/bash
 
-# Redirect all output (stdout and stderr) to a log file
-exec > >(tee -a /root/cryptopulse/script_cryptopulse_output.log) 2>&1
+# Configuration
+LOG_FILE="script_cryptopulse_output.log"
+SCRIPT_NAME="main.py"
+VENV_PATH="venv"
 
-# Activate the virtual environment
-source venv/bin/activate || { echo "Failed to activate virtual environment"; exit 1; }
-echo "Activated virtual environment"
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m' # No Color
 
-# Run Python script in the background and log the output
-echo "Running Python script"
-nohup python run_cryptopulse.py >> /root/cryptopulse/script_cryptopulse_output.log 2>&1 &
+echo -e "${GREEN}Starting CryptoPulse Trading Bot (Refactored Version)...${NC}"
 
-# Ensure the background process is running properly
-disown
+# Activate virtual environment if it exists
+if [ -d "$VENV_PATH" ]; then
+    echo -e "${YELLOW}Activating virtual environment...${NC}"
+    source "$VENV_PATH/bin/activate" || { echo -e "${RED}Failed to activate virtual environment${NC}"; exit 1; }
+    echo -e "${GREEN}Virtual environment activated${NC}"
+fi
 
-echo "Python script is running in the background. Logs will be available in script_output.log"
+# Check if we're in development mode
+if [ "$1" == "--dev" ]; then
+    echo -e "${YELLOW}Running in development mode...${NC}"
+    DEV_FLAG="--dev"
+else
+    DEV_FLAG=""
+fi
+
+# Check if running in background mode
+if [ "$1" == "--background" ] || [ "$2" == "--background" ]; then
+    echo -e "${YELLOW}Running in background mode...${NC}"
+    # Run in background with logging
+    nohup python3 "$SCRIPT_NAME" $DEV_FLAG >> "$LOG_FILE" 2>&1 &
+    disown
+    echo -e "${GREEN}CryptoPulse is running in the background. Logs: $LOG_FILE${NC}"
+else
+    # Run in foreground with logging
+    echo -e "${GREEN}Running $SCRIPT_NAME...${NC}"
+    python3 "$SCRIPT_NAME" $DEV_FLAG 2>&1 | tee "$LOG_FILE"
+fi
 
