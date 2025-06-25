@@ -9,7 +9,7 @@ echo "Activated virtual environment"
 
 # Run Python script in the background and log the output
 echo "Running Python script"
-nohup python run_cryptopulse.py >> /root/cryptopulse/script_cryptopulse_output.log 2>&1 &
+nohup python main.py >> /root/cryptopulse/script_cryptopulse_output.log 2>&1 &
 
 # Ensure the background process is running properly
 disown
