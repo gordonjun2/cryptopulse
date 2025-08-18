@@ -148,6 +148,16 @@ def get_account():
     return retry_api_call(client.futures_account)
 
 
+def wait_for_trades(symbol, order_id, timeout=5):
+    for _ in range(timeout * 5):  # poll every 0.2s
+        trades = get_account_trades(symbol)
+        order_trades = [t for t in trades if t["orderId"] == order_id]
+        if order_trades:
+            return order_trades
+        time.sleep(0.2)
+    return []  # timeout
+
+
 # [Binance] Function to simulate a trading operation for a single ticker
 async def trade(symbol, direction, message, original_chat_id, start_time):
     try:
@@ -282,13 +292,9 @@ async def trade(symbol, direction, message, original_chat_id, start_time):
                 if BINANCE_MAINNET_FLAG:
                     order_info = get_order(symbol, sell_order)
                     new_price = float(order_info["avgPrice"])
-                    trades = get_account_trades(symbol)
-                    order_trades = [
-                        t for t in trades
-                        if t["orderId"] == sell_order["orderId"]
-                    ]
-                    for t in order_trades:
-                        realised_pnl += float(t["realizedPnl"])
+
+                    trades = wait_for_trades(symbol, sell_order["orderId"])
+                    realised_pnl = sum(float(t["realizedPnl"]) for t in trades)
                 else:
                     ticker = client.futures_symbol_ticker(symbol=symbol)
 
