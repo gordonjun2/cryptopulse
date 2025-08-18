@@ -1,5 +1,5 @@
 {
-    "timestamp": 1755525843,
+    "timestamp": 1755532509,
     "symbols": [
         "BTCUSDT",
         "ETHUSDT",
@@ -8,8 +8,8 @@
         "SOLUSDT",
         "STETHUSDT",
         "DOGEUSDT",
-        "TRXUSDT",
         "ADAUSDT",
+        "TRXUSDT",
         "LINKUSDT"
     ]
 }

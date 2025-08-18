@@ -39,10 +39,15 @@ if cfg:
         BINANCE_TESTNET_API_KEY = binance.get('binance_testnet_api_key', '')
         BINANCE_TESTNET_API_SECRET = binance.get('binance_testnet_api_secret',
                                                  '')
+        BINANCE_MAINNET_API_KEY = binance.get('binance_mainnet_api_key', '')
+        BINANCE_MAINNET_API_SECRET = binance.get('binance_mainnet_api_secret',
+                                                 '')
         TOP_N_MARKETCAP = int(binance.get('top_n_marketcap', 10))
     else:
         BINANCE_TESTNET_API_KEY = ''
         BINANCE_TESTNET_API_SECRET = ''
+        BINANCE_MAINNET_API_KEY = ''
+        BINANCE_MAINNET_API_SECRET = ''
         TOP_N_MARKETCAP = 10
 else:
     ENV = 'dev'
@@ -54,6 +59,8 @@ else:
     GEMINI_API_KEY = ''
     BINANCE_TESTNET_API_KEY = ''
     BINANCE_TESTNET_API_SECRET = ''
+    BINANCE_MAINNET_API_KEY = ''
+    BINANCE_MAINNET_API_SECRET = ''
     TOP_N_MARKETCAP = 10
 
 CHAT_ID_LIST = [
@@ -101,11 +108,11 @@ CHAT_ID_LIST = [
 LLM_OPTION = "GEMINI"  # "BITDEER" or "GEMINI"
 MAX_RETRIES = 5
 RETRY_AFTER = 2
-INITIAL_CAPITAL = 3000  # USD
+INITIAL_CAPITAL = 100  # USD
 LEVERAGE = 1
-HODL_TIME = 5 * 60  # seconds
+HODL_TIME = 10  # seconds
 TRADE_SENTIMENT_THRESHOLD = 50  # %
-BINANCE_TESTNET_FLAG = False
+BINANCE_MAINNET_FLAG = True
 NUM_WORKERS = 100
 MARKETCAP_UPDATE_INTERVAL = 3600  # seconds
 

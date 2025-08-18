@@ -23,7 +23,8 @@ from config import (TELEGRAM_API_KEY, TELEGRAM_HASH, CHAT_ID_LIST,
                     MAIN_CHAT_ID, BITDEER_AI_BEARER_TOKEN, PROMPT, MAX_RETRIES,
                     RETRY_AFTER, INITIAL_CAPITAL, LEVERAGE, HODL_TIME,
                     TRADE_SENTIMENT_THRESHOLD, BINANCE_TESTNET_API_KEY,
-                    BINANCE_TESTNET_API_SECRET, BINANCE_TESTNET_FLAG,
+                    BINANCE_TESTNET_API_SECRET, BINANCE_MAINNET_API_KEY,
+                    BINANCE_MAINNET_API_SECRET, BINANCE_MAINNET_FLAG,
                     LLM_OPTION, GEMINI_API_KEY, TELEGRAM_BOT_TOKEN,
                     NUM_WORKERS, ENV, TOP_N_MARKETCAP)
 import urllib3
@@ -33,10 +34,10 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # [Binance] Client
 try:
-    if BINANCE_TESTNET_FLAG:
-        client = binance.client.Client(BINANCE_TESTNET_API_KEY,
-                                       BINANCE_TESTNET_API_SECRET,
-                                       testnet=True)
+    if BINANCE_MAINNET_FLAG:
+        client = binance.client.Client(BINANCE_MAINNET_API_KEY,
+                                       BINANCE_MAINNET_API_SECRET,
+                                       testnet=False)
     else:
         client = binance.client.Client()
 
@@ -83,7 +84,7 @@ def get_symbol_precision():
 
 
 # [Binance] Settings
-if BINANCE_TESTNET_FLAG:
+if BINANCE_MAINNET_FLAG:
     perps_tokens = retry_api_call(get_symbol_precision)
     if not perps_tokens:
         print("Failed to fetch quantity precision. Exiting...", flush=True)
@@ -130,6 +131,23 @@ def place_sell_order(symbol, order_size):
                           quantity=order_size)
 
 
+# [Binance] Get order with retry logic
+def get_order(symbol, order):
+    return retry_api_call(client.futures_get_order,
+                          symbol=symbol,
+                          orderId=order["orderId"])
+
+
+# [Binance] Get futures account trades with retry logic
+def get_account_trades(symbol):
+    return retry_api_call(client.futures_account_trades, symbol=symbol)
+
+
+# [Binance] Get futures account with retry logic
+def get_account():
+    return retry_api_call(client.futures_account)
+
+
 # [Binance] Function to simulate a trading operation for a single ticker
 async def trade(symbol, direction, message, original_chat_id, start_time):
     try:
@@ -145,7 +163,7 @@ async def trade(symbol, direction, message, original_chat_id, start_time):
             await message.reply_text(error_msg, quote=True)
             return
 
-        if BINANCE_TESTNET_FLAG:
+        if BINANCE_MAINNET_FLAG:
             selected_symbol_price_precision = perps_tokens.get(symbol)
             if not selected_symbol_price_precision:
                 error_msg = f"Could not find precision for symbol {symbol}"
@@ -195,7 +213,7 @@ async def trade(symbol, direction, message, original_chat_id, start_time):
         # Calculate order size
         try:
             order_size = (INITIAL_CAPITAL * LEVERAGE) / price
-            if BINANCE_TESTNET_FLAG and selected_symbol_price_precision:
+            if BINANCE_MAINNET_FLAG and selected_symbol_price_precision:
                 change_leverage(symbol, LEVERAGE)
                 order_size = math.floor(
                     order_size * (10**selected_symbol_price_precision)) / (
@@ -213,8 +231,41 @@ async def trade(symbol, direction, message, original_chat_id, start_time):
         print(f"----------------------------------\n", flush=True)
 
         try:
+            if BINANCE_MAINNET_FLAG:
+                # Check available balance before placing order
+                account = get_account()
+                if not account:
+                    error_msg = "Failed to get account information"
+                    print(error_msg, flush=True)
+                    await message.reply_text(error_msg, quote=True)
+                    return
+
+                available_balance = float(account.get("availableBalance", 0))
+                if available_balance <= 0:
+                    error_msg = "No available balance for trading"
+                    print(error_msg, flush=True)
+                    await message.reply_text(error_msg, quote=True)
+                    return
+
+                max_allowed_capital = available_balance * 0.5  # 50% of available balance
+                if corrected_initial_capital > max_allowed_capital:
+                    error_msg = f"Order size (${corrected_initial_capital:,.2f}) exceeds 50% of available balance (${max_allowed_capital:,.2f})"
+                    print(error_msg, flush=True)
+                    await message.reply_text(error_msg, quote=True)
+                    return
+
+                print(f"Available Balance: ${available_balance:,.2f}",
+                      flush=True)
+                print(
+                    f"Maximum Allowed Capital (50%): ${max_allowed_capital:,.2f}",
+                    flush=True)
+
             buy_order = place_buy_order(
-                symbol, order_size) if BINANCE_TESTNET_FLAG else True
+                symbol, order_size) if BINANCE_MAINNET_FLAG else True
+
+            if BINANCE_MAINNET_FLAG:
+                order_info = get_order(symbol, buy_order)
+                price = float(order_info["avgPrice"])
 
             if buy_order:
                 print(
@@ -224,27 +275,36 @@ async def trade(symbol, direction, message, original_chat_id, start_time):
                 await asyncio.sleep(HODL_TIME)  # Simulate holding the position
                 print(f"\nHodling for {HODL_TIME} seconds...\n", flush=True)
 
-                if BINANCE_TESTNET_FLAG:
-                    ticker = get_price(symbol)
+                sell_order = place_sell_order(
+                    symbol, order_size) if BINANCE_MAINNET_FLAG else True
+
+                realised_pnl = 0
+                if BINANCE_MAINNET_FLAG:
+                    order_info = get_order(symbol, sell_order)
+                    new_price = float(order_info["avgPrice"])
+                    trades = get_account_trades(symbol)
+                    order_trades = [
+                        t for t in trades
+                        if t["orderId"] == sell_order["orderId"]
+                    ]
+                    for t in order_trades:
+                        realised_pnl += float(t["realizedPnl"])
                 else:
                     ticker = client.futures_symbol_ticker(symbol=symbol)
 
-                if not ticker:
-                    error_msg = f"Failed to get updated ticker data for {symbol}"
-                    print(error_msg, flush=True)
-                    await message.reply_text(error_msg, quote=True)
-                    return
+                    if not ticker:
+                        error_msg = f"Failed to get updated ticker data for {symbol}"
+                        print(error_msg, flush=True)
+                        await message.reply_text(error_msg, quote=True)
+                        return
 
-                try:
-                    new_price = float(ticker["price"])
-                except (KeyError, ValueError) as e:
-                    error_msg = f"Invalid updated ticker data for {symbol}: {e}"
-                    print(error_msg, flush=True)
-                    await message.reply_text(error_msg, quote=True)
-                    return
-
-                sell_order = place_sell_order(
-                    symbol, order_size) if BINANCE_TESTNET_FLAG else True
+                    try:
+                        new_price = float(ticker["price"])
+                    except (KeyError, ValueError) as e:
+                        error_msg = f"Invalid updated ticker data for {symbol}: {e}"
+                        print(error_msg, flush=True)
+                        await message.reply_text(error_msg, quote=True)
+                        return
 
                 if sell_order:
                     print(
@@ -268,6 +328,8 @@ async def trade(symbol, direction, message, original_chat_id, start_time):
                     print(
                         f"After Capital: ${final_capital:.2f} ({percentage_gained:+.2f}%)",
                         flush=True)
+                    if BINANCE_MAINNET_FLAG:
+                        print(f"Realised PNL: ${realised_pnl:.2f}", flush=True)
                     print(f"----------------------------------\n", flush=True)
 
                     content = textwrap.dedent(f"""\
@@ -286,6 +348,7 @@ async def trade(symbol, direction, message, original_chat_id, start_time):
                     **Trade Summary:**  
                     __Before Capital:__ ${corrected_initial_capital:.2f}  
                     __After Capital:__ ${final_capital:.2f} ({percentage_gained:+.2f}%)
+                    {f"__Realised PNL:__ ${realised_pnl:.2f} USD" if BINANCE_MAINNET_FLAG else f"__PNL:__ ${final_capital - corrected_initial_capital:.2f} USD"}
                     __Total Time Taken:__ {time.time() - start_time:.2f} seconds
                     """)
 
