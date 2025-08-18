@@ -74,6 +74,7 @@ CHAT_ID_LIST = [
     # -1001138057410,
     -4698918931,
     -1002638442145,
+    -4817612340
 ]
 '''
     ~~~Examples of Channels and their Chat IDs~~~
@@ -94,6 +95,7 @@ CHAT_ID_LIST = [
     ⚡️Followin 闪电快讯｜聚合全球币圈大小事: -1001138057410
     Crypto Fake News: -4698918931
     Crypto Fake News Channel: -1002638442145
+    Blanket Cave: -4817612340
 '''
 
 LLM_OPTION = "GEMINI"  # "BITDEER" or "GEMINI"

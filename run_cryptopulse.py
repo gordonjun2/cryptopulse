@@ -131,7 +131,7 @@ def place_sell_order(symbol, order_size):
 
 
 # [Binance] Function to simulate a trading operation for a single ticker
-async def trade(symbol, direction, message, original_chat_id):
+async def trade(symbol, direction, message, original_chat_id, start_time):
     try:
         base_symbol = symbol.replace("USDT", "")
 
@@ -286,6 +286,7 @@ async def trade(symbol, direction, message, original_chat_id):
                     **Trade Summary:**  
                     __Before Capital:__ ${corrected_initial_capital:.2f}  
                     __After Capital:__ ${final_capital:.2f} ({percentage_gained:+.2f}%)
+                    __Total Time Taken:__ {time.time() - start_time:.2f} seconds
                     """)
 
                     pnl = final_capital - corrected_initial_capital
@@ -323,14 +324,14 @@ async def worker():
         if item is None:
             break
 
-        symbol, direction, message, original_chat_id = item
+        symbol, direction, message, original_chat_id, start_time = item
 
         # Remove from pending and add to processing
         pending_symbols.remove(symbol)
         processing_symbols.add(symbol)
 
         # Execute trade
-        await trade(symbol, direction, message, original_chat_id)
+        await trade(symbol, direction, message, original_chat_id, start_time)
 
         symbol_queue.task_done()
 
@@ -409,7 +410,11 @@ async def message_processor():
     async with aiohttp.ClientSession() as session:
         while True:
             try:
-                forwarded_message, message = await message_queue.get()
+                forwarded_message, message, start_time = await message_queue.get(
+                )
+
+                # Start timer for LLM processing
+                llm_start_time = time.time()
 
                 if LLM_OPTION.upper() == "BITDEER":
                     data = {
@@ -458,8 +463,10 @@ async def message_processor():
                     }
 
                 try:
-                    async with session.post(url, headers=headers,
-                                            json=data) as response:
+                    async with session.post(url,
+                                            headers=headers,
+                                            json=data,
+                                            ssl=False) as response:
                         if response.status == 200:
                             try:
                                 response_json = await response.json()
@@ -479,6 +486,10 @@ async def message_processor():
                                             'content',
                                             {}).get('parts',
                                                     [{}])[0].get('text', '')
+
+                                # Calculate LLM processing time
+                                llm_time = time.time() - llm_start_time
+                                content = content + f"\nTime Taken by LLM: {llm_time:.2f} seconds"
 
                                 if not content:
                                     error_msg = "No valid content in API response"
@@ -569,7 +580,9 @@ async def message_processor():
                                                 await symbol_queue.put(
                                                     (symbol, direction,
                                                      trade_replied_messsage,
-                                                     message.chat.id))
+                                                     message.chat.id,
+                                                     start_time)
+                                                )  # Pass timing info to trade
 
                                         else:
                                             not_found_tickers.append(symbol)
@@ -643,6 +656,7 @@ async def message_processor():
 @app.on_message(filters.chat(CHAT_ID_LIST))
 async def my_handler(client, message):
     if message.text or message.caption:
+        start_time = time.time()  # Start timing when message is received
         print(f"Message received from chat: {message.chat.id}")
         print(f"Message: {message.text or message.caption}")
 
@@ -651,7 +665,8 @@ async def my_handler(client, message):
                                                       )
             print("Message forwarded successfully.\n")
 
-            await message_queue.put((forwarded_message, message))
+            # Pass timing info along with the messages
+            await message_queue.put((forwarded_message, message, start_time))
         except Exception as e:
             print(f"Error forwarding message: {e}\n")
 
