@@ -532,10 +532,8 @@ async def message_processor():
                     }
 
                 try:
-                    async with session.post(url,
-                                            headers=headers,
-                                            json=data,
-                                            ssl=False) as response:
+                    async with session.post(url, headers=headers,
+                                            json=data) as response:
                         if response.status == 200:
                             try:
                                 response_json = await response.json()
