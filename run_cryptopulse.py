@@ -74,8 +74,8 @@ def get_symbol_precision():
         symbol_quantity_precision_dict = {}
         for symbol_info in exchange_info["symbols"]:
             symbol = symbol_info.get("symbol")
-            price_precision = symbol_info.get("quantityPrecision")
-            if symbol and price_precision:
+            if symbol:
+                price_precision = symbol_info.get("quantityPrecision", 0)
                 symbol_quantity_precision_dict[symbol] = int(price_precision)
         return symbol_quantity_precision_dict
     except BinanceAPIException as e:
