@@ -175,7 +175,7 @@ async def trade(symbol, direction, message, original_chat_id, start_time):
 
         if BINANCE_MAINNET_FLAG:
             selected_symbol_price_precision = perps_tokens.get(symbol)
-            if not selected_symbol_price_precision:
+            if selected_symbol_price_precision is None:
                 error_msg = f"Could not find precision for symbol {symbol}"
                 print(error_msg, flush=True)
                 await message.reply_text(error_msg, quote=True)
