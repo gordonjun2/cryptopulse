@@ -114,23 +114,24 @@ MAX_RETRIES = 5
 RETRY_AFTER = 2
 INITIAL_CAPITAL = 100  # USD
 LEVERAGE = 1
-HODL_TIME = 10  # seconds
+HODL_TIME = 300  # seconds
 TRADE_SENTIMENT_THRESHOLD = 50  # %
 BINANCE_MAINNET_FLAG = True
 NUM_WORKERS = 100
 MARKETCAP_UPDATE_INTERVAL = 3600  # seconds
 
 PROMPT = """
-You are an assistant specialized in extracting cryptocurrencies mentioned in a given text and analyzing the sentiment to generate a prediction.
+You are an assistant specialized in extracting cryptocurrencies mentioned in a given text and analyzing the sentiment for EACH coin individually.
 
 Task:
-Extract cryptocurrency tickers (e.g., XRP, SOL, ADA) from the text.
+Extract cryptocurrency tickers from the text. ALL tickers MUST be UPPERCASE (e.g., XRP, SOL, ADA, BTC, ETH).
 If no cryptocurrency is mentioned, return an empty list for coins.
-Assess the sentiment of the text and assign a Sentiment score ranging from -100% to 100% (The sentiment score will be a continuous value between 
--100 and 100, not just fixed steps.):
-Negative values (-100% to -1%) indicate Bearish sentiment.
-Positive values (1% to 100%) indicate Bullish sentiment.
-A score of 0% means completely neutral sentiment.
+
+For EACH cryptocurrency mentioned, assign an individual Sentiment score ranging from -100% to 100%:
+- Negative values (-100% to -1%) indicate Bearish sentiment.
+- Positive values (1% to 100%) indicate Bullish sentiment.
+- A score of 0% means completely neutral sentiment.
+
 Consider both direct (crypto-specific) and indirect (macro/geopolitical) factors influencing sentiment:
 Bearish Sentiment (-100% to -1%): Look for context like "crash," "sell-off," "fear," "regulatory crackdown," "decline," "war," "uncertainty," 
 "economic slowdown," "liquidity issues," "bank failures", "dump," "collapse," "downtrend," "bear market," "capitulation," "recession," "stagflation," 
@@ -145,10 +146,14 @@ Bullish Sentiment (1% to 100%): Look for context like "rally," "bullish," "uptre
 "airdrops," "institutional investment," "on-chain activity spike," "exchange listing," "layer 2 adoption," "TVL (Total Value Locked) increase", 
 "regulatory clarity," "mass adoption," "government support," "nation-state adoption," "market-friendly policies", "greed index rising," "retail interest," 
 "positive funding rates," "risk-on environment." Someone famous liking a certain coin is also a bullish signal.
-Only use one sentiment side per response (either positive or negative, never both). Provide a clear explanation for the assigned sentiment score.
+
+For each coin, only use one sentiment side (either positive or negative, never both). Provide a clear explanation for each coin's sentiment score.
 
 Extract the following structured information:
-- coins: A list of cryptocurrency ticker symbols mentioned in the text (e.g., ["BTC", "ETH", "SOL"]). Return an empty list if no cryptocurrencies are mentioned.
-- sentiment: A float value representing the sentiment score from -100.0 to 100.0 (where negative is bearish and positive is bullish).
-- explanation: A clear explanation text describing the reasoning behind the assigned sentiment score.
+- coins: A list of objects, where each object contains:
+  - coin: The cryptocurrency ticker symbol in UPPERCASE (e.g., "BTC", "ETH", "SOL"). MUST be UPPERCASE.
+  - sentiment: A float value from -100.0 to 100.0 for this specific coin (negative is bearish, positive is bullish).
+  - explanation: A clear explanation describing the reasoning behind this coin's sentiment score.
+
+Return an empty list for coins if no cryptocurrencies are mentioned.
 """

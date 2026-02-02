@@ -466,10 +466,14 @@ message_queue = asyncio.Queue()
 
 
 # [Instructor] Pydantic Model for Sentiment Analysis
+class CoinSentiment(BaseModel):
+    coin: str  # UPPERCASE ticker (e.g., "BTC", "ETH")
+    sentiment: float  # -100.0 to 100.0
+    explanation: str  # Reasoning for this specific coin
+
+
 class SentimentAnalysis(BaseModel):
-    sentiment: float  # Percentage score from -100 to 100
-    coins: List[str]  # List of coin tickers
-    explanation: str   # Explanation text
+    coins: List[CoinSentiment]  # Each coin has its own sentiment
 
 
 # [Instructor] Create Instructor Client
@@ -566,9 +570,16 @@ async def message_processor():
                 # Calculate LLM processing time
                 llm_time = time.time() - llm_start_time
 
-                # Format reply content using structured model data
-                coins_str = ", ".join(result.coins) if result.coins else "N/A"
-                content = f"Coins: {coins_str}\nSentiment: {result.sentiment:.1f}%\n\nExplanation: {result.explanation}\n\nTime Taken by LLM: {llm_time:.2f} seconds"
+                # Format reply content using structured model data with per-coin sentiment
+                if result.coins:
+                    coin_lines = []
+                    for coin_sentiment in result.coins:
+                        coin_ticker = coin_sentiment.coin.upper()
+                        coin_lines.append(f"- {coin_ticker}: {coin_sentiment.sentiment:.1f}% | {coin_sentiment.explanation}")
+                    coins_str = "\n".join(coin_lines)
+                    content = f"Coins & Sentiments:\n{coins_str}\n\nTime Taken by LLM: {llm_time:.2f} seconds"
+                else:
+                    content = f"Coins: N/A\n\nTime Taken by LLM: {llm_time:.2f} seconds"
 
                 if use_bot:
                     replied_messsage = await bot.send_message(
@@ -580,70 +591,78 @@ async def message_processor():
                         content, quote=True)
                 print(f"Replied with content:\n{content}\n")
 
-                # Use structured sentiment from model
-                sentiment = result.sentiment
+                # Process each coin with its individual sentiment
+                not_found_tickers = []
+                below_threshold_tickers = []
 
-                if abs(sentiment) >= TRADE_SENTIMENT_THRESHOLD:
+                for coin_sentiment in result.coins:
+                    # Enforce UPPERCASE ticker
+                    coin_ticker = coin_sentiment.coin.upper()
+                    sentiment = coin_sentiment.sentiment
+
+                    if coin_ticker == 'N/A' or not coin_ticker:
+                        continue
+
+                    # Check if sentiment meets threshold for this specific coin
+                    if abs(sentiment) < TRADE_SENTIMENT_THRESHOLD:
+                        below_threshold_tickers.append(f"{coin_ticker} ({sentiment:.1f}%)")
+                        continue
+
+                    # Determine direction based on this coin's sentiment
                     direction = "LONG" if sentiment > 0 else "SHORT"
 
-                    # Use structured coins from model
-                    symbols = result.coins
+                    # Build symbol with USDT suffix
+                    symbol = coin_ticker if "USDT" in coin_ticker else coin_ticker + "USDT"
 
-                    not_found_tickers = []
-                    for symbol in symbols:
-                        if symbol == 'N/A' or not symbol:
+                    # Check if ticker can be traded in Binance
+                    if symbol in perps_tokens:
+                        # Check if symbol is in top market cap
+                        if is_top_market_cap(symbol):
+                            text = f"{symbol} is in the top {TOP_N_MARKETCAP} market cap list, skipping trade...\n"
+                            print(text, flush=True)
+                            await replied_messsage.reply_text(
+                                text, quote=True)
                             continue
-                        if "USDT" not in symbol:
-                            symbol += "USDT"
-                        # Check if ticker can be traded in Binance
-                        if symbol in perps_tokens:
-                            # Check if symbol is in top market cap
-                            if is_top_market_cap(symbol):
-                                text = f"{symbol} is in the top {TOP_N_MARKETCAP} market cap list, skipping trade...\n"
-                                print(text, flush=True)
-                                await replied_messsage.reply_text(
-                                    text, quote=True)
-                                continue
 
-                            # Check if symbol is already in queue or being processed
-                            if symbol in processing_symbols or symbol in pending_symbols:
-                                text = f"{symbol} is already in queue or being processed for a trade, skipping...\n"
-                                print(text, flush=True)
-                                await replied_messsage.reply_text(
-                                    text, quote=True)
-                            else:
-                                text = f"Ticker {symbol} found in Binance API, hence a trade will be executed now. It will be closed in {HODL_TIME / 60:,.2f} minutes. \n"
-                                print(text, flush=True)
-                                trade_replied_messsage = await replied_messsage.reply_text(
-                                    text, quote=True)
-                                print(
-                                    f"Adding {symbol} to the queue\n",
-                                    flush=True)
-                                pending_symbols.add(
-                                    symbol
-                                )  # Add to pending set before putting in queue
-                                await symbol_queue.put(
-                                    (symbol, direction,
-                                     trade_replied_messsage,
-                                     message.chat.id,
-                                     start_time)
-                                )  # Pass timing info to trade
-
+                        # Check if symbol is already in queue or being processed
+                        if symbol in processing_symbols or symbol in pending_symbols:
+                            text = f"{symbol} is already in queue or being processed for a trade, skipping...\n"
+                            print(text, flush=True)
+                            await replied_messsage.reply_text(
+                                text, quote=True)
                         else:
-                            not_found_tickers.append(symbol)
+                            text = f"Ticker {symbol} ({direction}, {sentiment:.1f}%) found in Binance API, hence a trade will be executed now. It will be closed in {HODL_TIME / 60:,.2f} minutes.\n"
+                            print(text, flush=True)
+                            trade_replied_messsage = await replied_messsage.reply_text(
+                                text, quote=True)
+                            print(
+                                f"Adding {symbol} to the queue\n",
+                                flush=True)
+                            pending_symbols.add(
+                                symbol
+                            )  # Add to pending set before putting in queue
+                            await symbol_queue.put(
+                                (symbol, direction,
+                                 trade_replied_messsage,
+                                 message.chat.id,
+                                 start_time)
+                            )  # Pass timing info to trade
 
-                    if not_found_tickers:
-                        not_found_tickers_string = ", ".join(
-                            not_found_tickers)
-                        text = f"Ticker(s) {not_found_tickers_string} not found in Binance API, hence no trade is executed.\n"
-                        print(text)
-                        await replied_messsage.reply_text(
-                            text, quote=True)
+                    else:
+                        not_found_tickers.append(symbol)
 
-                else:
-                    print(
-                        "Trade sentiment is below the threshold, hence no trade is executed.\n"
-                    )
+                if below_threshold_tickers:
+                    below_threshold_str = ", ".join(below_threshold_tickers)
+                    text = f"Ticker(s) {below_threshold_str} below sentiment threshold ({TRADE_SENTIMENT_THRESHOLD}%), no trade executed.\n"
+                    print(text)
+                    await replied_messsage.reply_text(text, quote=True)
+
+                if not_found_tickers:
+                    not_found_tickers_string = ", ".join(not_found_tickers)
+                    text = f"Ticker(s) {not_found_tickers_string} not found in Binance API, hence no trade is executed.\n"
+                    print(text)
+                    await replied_messsage.reply_text(
+                        text, quote=True)
 
             except Exception as e:
                 error_msg = f"Error processing message with Instructor: {e}"
