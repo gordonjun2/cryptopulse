@@ -487,7 +487,7 @@ def create_instructor_client():
             raise ValueError("OPENAI_API_KEY not configured for Instructor client")
         
         print("Using OpenAI LLM API with Instructor...\n")
-        provider_model = "openai/gpt-4o-mini"
+        provider_model = "openai/gpt-4.1-nano"
         
         return instructor.from_provider(
             provider_model,
@@ -503,12 +503,18 @@ def create_instructor_client():
 
 # Initialize instructor client
 instructor_client = None
-if LLM_OPTION.upper() == "OPENAI":
-    try:
-        instructor_client = create_instructor_client()
-    except ValueError as e:
-        print(f"Failed to initialize Instructor client: {e}\n", flush=True)
-        instructor_client = None
+try:
+    instructor_client = create_instructor_client()
+    if instructor_client is None:
+        print("Warning: Instructor client creation returned None\n", flush=True)
+    else:
+        print("Instructor client initialized successfully\n", flush=True)
+except Exception as e:
+    import traceback
+    error_msg = f"Failed to initialize Instructor client: {type(e).__name__}: {e}\n"
+    print(error_msg, flush=True)
+    print(f"Traceback: {traceback.format_exc()}\n", flush=True)
+    instructor_client = None
 
 # [Pyrogram] LLM API
 async def message_processor():
