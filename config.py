@@ -31,9 +31,11 @@ if cfg:
         llm = dict(cfg.items('llm'))
         BITDEER_AI_BEARER_TOKEN = llm.get('bitdeer_ai_bearer_token', '')
         GEMINI_API_KEY = llm.get('gemini_api_key', '')
+        OPENAI_API_KEY = llm.get('openai_api_key', '')
     else:
         BITDEER_AI_BEARER_TOKEN = ''
         GEMINI_API_KEY = ''
+        OPENAI_API_KEY = ''
     if cfg.has_section('binance'):
         binance = dict(cfg.items('binance'))
         BINANCE_TESTNET_API_KEY = binance.get('binance_testnet_api_key', '')
@@ -57,6 +59,7 @@ else:
     MAIN_CHAT_ID = ''
     BITDEER_AI_BEARER_TOKEN = ''
     GEMINI_API_KEY = ''
+    OPENAI_API_KEY = ''
     BINANCE_TESTNET_API_KEY = ''
     BINANCE_TESTNET_API_SECRET = ''
     BINANCE_MAINNET_API_KEY = ''
@@ -87,7 +90,6 @@ CHAT_ID_LIST = [
 ]
 '''
     ~~~Examples of Channels and their Chat IDs~~~
-    CRYPTO NEWS: -1001488075213
     ByteAI Crypto News: -1002050038049
     Crypto Mumbles: -1001369518127
     infinityhedge: -1001380328653
@@ -107,7 +109,7 @@ CHAT_ID_LIST = [
     Blanket Cave: -4817612340
 '''
 
-LLM_OPTION = "GEMINI"  # "BITDEER" or "GEMINI"
+LLM_OPTION = "OPENAI"  # "BITDEER" or "GEMINI" or "OPENAI"
 MAX_RETRIES = 5
 RETRY_AFTER = 2
 INITIAL_CAPITAL = 100  # USD
@@ -123,7 +125,7 @@ You are an assistant specialized in extracting cryptocurrencies mentioned in a g
 
 Task:
 Extract cryptocurrency tickers (e.g., XRP, SOL, ADA) from the text.
-If no cryptocurrency is mentioned, return "Coins: N/A".
+If no cryptocurrency is mentioned, return an empty list for coins.
 Assess the sentiment of the text and assign a Sentiment score ranging from -100% to 100% (The sentiment score will be a continuous value between 
 -100 and 100, not just fixed steps.):
 Negative values (-100% to -1%) indicate Bearish sentiment.
@@ -144,9 +146,9 @@ Bullish Sentiment (1% to 100%): Look for context like "rally," "bullish," "uptre
 "regulatory clarity," "mass adoption," "government support," "nation-state adoption," "market-friendly policies", "greed index rising," "retail interest," 
 "positive funding rates," "risk-on environment." Someone famous liking a certain coin is also a bullish signal.
 Only use one sentiment side per response (either positive or negative, never both). Provide a clear explanation for the assigned sentiment score.
-STRICTLY format the response as follows (DO NOT DEVIATE and Coins and Sentiment are on separate lines without extra space. Sentiment and Explanation are separated by one blank line.):
-Coins: [ticker 1], [ticker 2], ...
-Sentiment: [percentage]%
 
-Explanation: [explanation]
+Extract the following structured information:
+- coins: A list of cryptocurrency ticker symbols mentioned in the text (e.g., ["BTC", "ETH", "SOL"]). Return an empty list if no cryptocurrencies are mentioned.
+- sentiment: A float value representing the sentiment score from -100.0 to 100.0 (where negative is bearish and positive is bullish).
+- explanation: A clear explanation text describing the reasoning behind the assigned sentiment score.
 """

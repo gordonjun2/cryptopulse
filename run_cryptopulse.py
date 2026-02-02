@@ -10,6 +10,9 @@ import textwrap
 import json
 import aiofiles
 import prettytable as pt
+from typing import List
+from pydantic import BaseModel
+import instructor
 from pyrogram import Client, utils, filters, idle
 from aiogram import Bot, Dispatcher, Router, html
 from aiogram.utils import markdown as ParseMode
@@ -25,7 +28,7 @@ from config import (TELEGRAM_API_KEY, TELEGRAM_HASH, CHAT_ID_LIST,
                     TRADE_SENTIMENT_THRESHOLD, BINANCE_TESTNET_API_KEY,
                     BINANCE_TESTNET_API_SECRET, BINANCE_MAINNET_API_KEY,
                     BINANCE_MAINNET_API_SECRET, BINANCE_MAINNET_FLAG,
-                    LLM_OPTION, GEMINI_API_KEY, TELEGRAM_BOT_TOKEN,
+                    LLM_OPTION, GEMINI_API_KEY, OPENAI_API_KEY, TELEGRAM_BOT_TOKEN,
                     NUM_WORKERS, ENV, TOP_N_MARKETCAP)
 import urllib3
 from market_cap_tracker import is_top_market_cap, update_market_cap_loop
@@ -461,262 +464,201 @@ app = Client("text_listener", TELEGRAM_API_KEY, TELEGRAM_HASH)
 # [Pyrogram] Settings
 message_queue = asyncio.Queue()
 
-if LLM_OPTION.upper() == "BITDEER":
-    print("Using Bitdeer AI LLM API...\n")
-    url = "https://api-inference.bitdeer.ai/v1/chat/completions"
-    headers = {
-        "Authorization": "Bearer " + BITDEER_AI_BEARER_TOKEN,
-        "Content-Type": "application/json"
-    }
-else:
-    print("Using Gemini LLM API...\n")
-    url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=' + GEMINI_API_KEY
-    headers = {'Content-Type': 'application/json'}
 
+# [Instructor] Pydantic Model for Sentiment Analysis
+class SentimentAnalysis(BaseModel):
+    sentiment: float  # Percentage score from -100 to 100
+    coins: List[str]  # List of coin tickers
+    explanation: str   # Explanation text
+
+
+# [Instructor] Create Instructor Client
+def create_instructor_client():
+    """Create async Instructor client for structured LLM outputs.
+    
+    Returns:
+        Async Instructor client instance configured for the provider.
+        
+    Raises:
+        ValueError: If LLM model is not supported or API key is missing.
+    """
+    if LLM_OPTION.upper() == "OPENAI":
+        if not OPENAI_API_KEY:
+            raise ValueError("OPENAI_API_KEY not configured for Instructor client")
+        
+        print("Using OpenAI LLM API with Instructor...\n")
+        provider_model = "openai/gpt-4o-mini"
+        
+        return instructor.from_provider(
+            provider_model,
+            api_key=OPENAI_API_KEY,
+            async_client=True,
+        )
+    else:
+        raise ValueError(
+            f"Unsupported LLM_OPTION: {LLM_OPTION}. "
+            f"Currently only 'OPENAI' is supported with Instructor."
+        )
+
+
+# Initialize instructor client
+instructor_client = None
+if LLM_OPTION.upper() == "OPENAI":
+    try:
+        instructor_client = create_instructor_client()
+    except ValueError as e:
+        print(f"Failed to initialize Instructor client: {e}\n", flush=True)
+        instructor_client = None
 
 # [Pyrogram] LLM API
 async def message_processor():
-    async with aiohttp.ClientSession() as session:
-        while True:
+    while True:
+        try:
+            forwarded_message, message, start_time = await message_queue.get()
+
+            # Start timer for LLM processing
+            llm_start_time = time.time()
+
+            # Check if instructor client is available
+            if instructor_client is None:
+                error_msg = "Instructor client is not initialized. Cannot process message."
+                print(error_msg, flush=True)
+                if use_bot:
+                    await bot.send_message(
+                        forwarded_message.chat.id,
+                        error_msg,
+                        reply_to_message_id=forwarded_message.id)
+                else:
+                    await forwarded_message.reply_text(error_msg, quote=True)
+                message_queue.task_done()
+                continue
+
             try:
-                forwarded_message, message, start_time = await message_queue.get(
+                # Use instructor client for structured extraction
+                user_content = forwarded_message.text or forwarded_message.caption
+                if not user_content:
+                    error_msg = "No text or caption found in forwarded message"
+                    print(error_msg, flush=True)
+                    if use_bot:
+                        await bot.send_message(
+                            forwarded_message.chat.id,
+                            error_msg,
+                            reply_to_message_id=forwarded_message.id)
+                    else:
+                        await forwarded_message.reply_text(error_msg, quote=True)
+                    message_queue.task_done()
+                    continue
+
+                result = await instructor_client.chat.completions.create(
+                    response_model=SentimentAnalysis,
+                    messages=[
+                        {"role": "system", "content": PROMPT},
+                        {"role": "user", "content": user_content}
+                    ],
                 )
 
-                # Start timer for LLM processing
-                llm_start_time = time.time()
+                # Calculate LLM processing time
+                llm_time = time.time() - llm_start_time
 
-                if LLM_OPTION.upper() == "BITDEER":
-                    data = {
-                        "model":
-                        "deepseek-ai/DeepSeek-V3",
-                        "messages": [{
-                            "role": "system",
-                            "content": PROMPT
-                        }, {
-                            "role":
-                            "user",
-                            "content":
-                            forwarded_message.text or forwarded_message.caption
-                        }],
-                        "max_tokens":
-                        1024,
-                        "temperature":
-                        1,
-                        "frequency_penalty":
-                        0,
-                        "presence_penalty":
-                        0,
-                        "top_p":
-                        1,
-                        "stream":
-                        False
-                    }
+                # Format reply content using structured model data
+                coins_str = ", ".join(result.coins) if result.coins else "N/A"
+                content = f"Coins: {coins_str}\nSentiment: {result.sentiment:.1f}%\n\nExplanation: {result.explanation}\n\nTime Taken by LLM: {llm_time:.2f} seconds"
+
+                if use_bot:
+                    replied_messsage = await bot.send_message(
+                        forwarded_message.chat.id,
+                        content,
+                        reply_to_message_id=forwarded_message.id)
                 else:
-                    data = {
-                        "contents": [{
-                            "parts": [{
-                                "text":
-                                forwarded_message.text
-                                or forwarded_message.caption
-                            }]
-                        }],
-                        "system_instruction": {
-                            "parts": [{
-                                "text": PROMPT
-                            }]
-                        },
-                        "generationConfig": {
-                            "temperature": 0.1,
-                            "maxOutputTokens": 1024,
-                        }
-                    }
+                    replied_messsage = await forwarded_message.reply_text(
+                        content, quote=True)
+                print(f"Replied with content:\n{content}\n")
 
-                try:
-                    async with session.post(url, headers=headers,
-                                            json=data) as response:
-                        if response.status == 200:
-                            try:
-                                response_json = await response.json()
-                                print(f"API Response: {response_json}\n")
+                # Use structured sentiment from model
+                sentiment = result.sentiment
 
-                                content = None
-                                if LLM_OPTION == 'BITDEER':
-                                    choices = response_json.get('choices', [])
-                                    if choices:
-                                        content = choices[0].get(
-                                            'message', {}).get('content', '')
-                                else:
-                                    candidates = response_json.get(
-                                        'candidates', [])
-                                    if candidates:
-                                        content = candidates[0].get(
-                                            'content',
-                                            {}).get('parts',
-                                                    [{}])[0].get('text', '')
+                if abs(sentiment) >= TRADE_SENTIMENT_THRESHOLD:
+                    direction = "LONG" if sentiment > 0 else "SHORT"
 
-                                # Calculate LLM processing time
-                                llm_time = time.time() - llm_start_time
-                                content = content + f"\nTime Taken by LLM: {llm_time:.2f} seconds"
+                    # Use structured coins from model
+                    symbols = result.coins
 
-                                if not content:
-                                    error_msg = "No valid content in API response"
-                                    print(error_msg, flush=True)
-                                    if use_bot:
-                                        await bot.send_message(
-                                            forwarded_message.chat.id,
-                                            error_msg,
-                                            reply_to_message_id=
-                                            forwarded_message.id)
-                                    else:
-                                        await forwarded_message.reply_text(
-                                            error_msg, quote=True)
-                                    continue
+                    not_found_tickers = []
+                    for symbol in symbols:
+                        if symbol == 'N/A' or not symbol:
+                            continue
+                        if "USDT" not in symbol:
+                            symbol += "USDT"
+                        # Check if ticker can be traded in Binance
+                        if symbol in perps_tokens:
+                            # Check if symbol is in top market cap
+                            if is_top_market_cap(symbol):
+                                text = f"{symbol} is in the top {TOP_N_MARKETCAP} market cap list, skipping trade...\n"
+                                print(text, flush=True)
+                                await replied_messsage.reply_text(
+                                    text, quote=True)
+                                continue
 
-                                if use_bot:
-                                    replied_messsage = await bot.send_message(
-                                        forwarded_message.chat.id,
-                                        content,
-                                        reply_to_message_id=forwarded_message.
-                                        id)
-                                    # replied_messsage = await bot.send_message(
-                                    #     forwarded_message.chat.id, content)
-                                else:
-                                    replied_messsage = await forwarded_message.reply_text(
-                                        content, quote=True)
-                                print(f"Replied with content:\n{content}\n")
-
-                                # Extract sentiment from the content
-                                try:
-                                    sentiment_match = re.search(
-                                        r"Sentiment:\s*([-+]?\d+)%", content)
-                                    sentiment = float(sentiment_match.group(
-                                        1)) if sentiment_match else 0
-                                except (AttributeError, ValueError) as e:
-                                    print(f"Error extracting sentiment: {e}",
-                                          flush=True)
-                                    sentiment = 0
-
-                                if abs(sentiment) >= TRADE_SENTIMENT_THRESHOLD:
-                                    direction = "LONG" if sentiment > 0 else "SHORT"
-
-                                    # Extract symbols from the content
-                                    try:
-                                        matches = re.findall(
-                                            r"Coins:\s*([\w, /]+)", content)
-                                        symbols = matches[0].replace(
-                                            " ",
-                                            "").split(",") if matches else []
-                                    except Exception as e:
-                                        print(f"Error extracting symbols: {e}",
-                                              flush=True)
-                                        symbols = []
-
-                                    not_found_tickers = []
-                                    for symbol in symbols:
-                                        if symbol == 'N/A' or not symbol:
-                                            continue
-                                        if "USDT" not in symbol:
-                                            symbol += "USDT"
-                                        # Check if ticker can be traded in Binance
-                                        if symbol in perps_tokens:
-                                            # Check if symbol is in top market cap
-                                            if is_top_market_cap(symbol):
-                                                text = f"{symbol} is in the top {TOP_N_MARKETCAP} market cap list, skipping trade...\n"
-                                                print(text, flush=True)
-                                                await replied_messsage.reply_text(
-                                                    text, quote=True)
-                                                continue
-
-                                            # Check if symbol is already in queue or being processed
-                                            if symbol in processing_symbols or symbol in pending_symbols:
-                                                text = f"{symbol} is already in queue or being processed for a trade, skipping...\n"
-                                                print(text, flush=True)
-                                                await replied_messsage.reply_text(
-                                                    text, quote=True)
-                                            else:
-                                                text = f"Ticker {symbol} found in Binance API, hence a trade will be executed now. It will be closed in {HODL_TIME / 60:,.2f} minutes. \n"
-                                                print(text, flush=True)
-                                                trade_replied_messsage = await replied_messsage.reply_text(
-                                                    text, quote=True)
-                                                print(
-                                                    f"Adding {symbol} to the queue\n",
-                                                    flush=True)
-                                                pending_symbols.add(
-                                                    symbol
-                                                )  # Add to pending set before putting in queue
-                                                await symbol_queue.put(
-                                                    (symbol, direction,
-                                                     trade_replied_messsage,
-                                                     message.chat.id,
-                                                     start_time)
-                                                )  # Pass timing info to trade
-
-                                        else:
-                                            not_found_tickers.append(symbol)
-
-                                    if not_found_tickers:
-                                        not_found_tickers_string = ", ".join(
-                                            not_found_tickers)
-                                        text = f"Ticker(s) {not_found_tickers_string} not found in Binance API, hence no trade is executed.\n"
-                                        print(text)
-                                        await replied_messsage.reply_text(
-                                            text, quote=True)
-
-                                else:
-                                    print(
-                                        "Trade sentiment is below the threshold, hence no trade is executed.\n"
-                                    )
-
-                            except Exception as e:
-                                error_msg = f"Error processing API response: {e}"
-                                print(error_msg, flush=True)
-                                if use_bot:
-                                    await bot.send_message(
-                                        forwarded_message.chat.id,
-                                        error_msg,
-                                        reply_to_message_id=forwarded_message.
-                                        id)
-                                else:
-                                    await forwarded_message.reply_text(
-                                        error_msg, quote=True)
-                        else:
-                            error_msg = f"Error: Received status code {response.status}"
-                            print(error_msg + "\n", flush=True)
-                            if use_bot:
-                                await bot.send_message(
-                                    forwarded_message.chat.id,
-                                    error_msg,
-                                    reply_to_message_id=forwarded_message.id)
+                            # Check if symbol is already in queue or being processed
+                            if symbol in processing_symbols or symbol in pending_symbols:
+                                text = f"{symbol} is already in queue or being processed for a trade, skipping...\n"
+                                print(text, flush=True)
+                                await replied_messsage.reply_text(
+                                    text, quote=True)
                             else:
-                                await forwarded_message.reply_text(error_msg,
-                                                                   quote=True)
-                except aiohttp.ClientError as e:
-                    error_msg = f"Network error querying the API: {e}"
-                    print(error_msg + "\n", flush=True)
-                    if use_bot:
-                        await bot.send_message(
-                            forwarded_message.chat.id,
-                            error_msg,
-                            reply_to_message_id=forwarded_message.id)
-                    else:
-                        await forwarded_message.reply_text(error_msg,
-                                                           quote=True)
-                except Exception as e:
-                    error_msg = f"Unexpected error querying the API: {e}"
-                    print(error_msg + "\n", flush=True)
-                    if use_bot:
-                        await bot.send_message(
-                            forwarded_message.chat.id,
-                            error_msg,
-                            reply_to_message_id=forwarded_message.id)
-                    else:
-                        await forwarded_message.reply_text(error_msg,
-                                                           quote=True)
+                                text = f"Ticker {symbol} found in Binance API, hence a trade will be executed now. It will be closed in {HODL_TIME / 60:,.2f} minutes. \n"
+                                print(text, flush=True)
+                                trade_replied_messsage = await replied_messsage.reply_text(
+                                    text, quote=True)
+                                print(
+                                    f"Adding {symbol} to the queue\n",
+                                    flush=True)
+                                pending_symbols.add(
+                                    symbol
+                                )  # Add to pending set before putting in queue
+                                await symbol_queue.put(
+                                    (symbol, direction,
+                                     trade_replied_messsage,
+                                     message.chat.id,
+                                     start_time)
+                                )  # Pass timing info to trade
+
+                        else:
+                            not_found_tickers.append(symbol)
+
+                    if not_found_tickers:
+                        not_found_tickers_string = ", ".join(
+                            not_found_tickers)
+                        text = f"Ticker(s) {not_found_tickers_string} not found in Binance API, hence no trade is executed.\n"
+                        print(text)
+                        await replied_messsage.reply_text(
+                            text, quote=True)
+
+                else:
+                    print(
+                        "Trade sentiment is below the threshold, hence no trade is executed.\n"
+                    )
+
             except Exception as e:
-                print(f"Critical error in message processor: {e}\n",
-                      flush=True)
-            finally:
-                message_queue.task_done()
+                error_msg = f"Error processing message with Instructor: {e}"
+                print(error_msg, flush=True)
+                import traceback
+                traceback.print_exc()
+                if use_bot:
+                    await bot.send_message(
+                        forwarded_message.chat.id,
+                        error_msg,
+                        reply_to_message_id=forwarded_message.id)
+                else:
+                    await forwarded_message.reply_text(
+                        error_msg, quote=True)
+        except Exception as e:
+            print(f"Critical error in message processor: {e}\n",
+                  flush=True)
+            import traceback
+            traceback.print_exc()
+        finally:
+            message_queue.task_done()
 
 
 # [Pyrogram] Handler for incoming messages

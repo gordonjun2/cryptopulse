@@ -62,6 +62,7 @@ MAIN_CHAT_ID = your_main_chat_id
 [llm]
 BITDEER_AI_BEARER_TOKEN = your_bitdeer_token
 GEMINI_API_KEY = your_gemini_api_key
+OPENAI_API_KEY = your_openai_api_key
 
 [binance]
 BINANCE_TESTNET_API_KEY = your_testnet_api_key
