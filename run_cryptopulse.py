@@ -29,7 +29,7 @@ from config import (TELEGRAM_API_KEY, TELEGRAM_HASH, CHAT_ID_LIST,
                     BINANCE_TESTNET_API_SECRET, BINANCE_MAINNET_API_KEY,
                     BINANCE_MAINNET_API_SECRET, BINANCE_MAINNET_FLAG,
                     LLM_OPTION, GEMINI_API_KEY, OPENAI_API_KEY, TELEGRAM_BOT_TOKEN,
-                    NUM_WORKERS, ENV, TOP_N_MARKETCAP)
+                    NUM_WORKERS, ENV, TOP_N_MARKETCAP, PROVIDER_MODEL)
 import urllib3
 from market_cap_tracker import is_top_market_cap, update_market_cap_loop
 
@@ -58,39 +58,75 @@ except Exception as e:
 def retry_api_call(func, *args, **kwargs):
     retries = MAX_RETRIES or 3
     delay = RETRY_AFTER or 2
-    for _ in range(retries):
+
+    non_retryable_error_codes = {
+        -1111,  # Precision is over the maximum defined for this asset
+        -1112,  # Invalid order
+        -2013,  # No sufficient funds
+        -2019,  # Invalid quantity
+        -2021,  # Order would immediately trigger
+    }
+
+    for attempt in range(retries):
         try:
             return func(*args, **kwargs)
         except BinanceAPIException as e:
-            print(f"Binance API Error: {e}. Retrying...", flush=True)
+            error_code = getattr(e, 'code', None)
+            if error_code in non_retryable_error_codes:
+                print(f"Binance API Error (code={error_code}): {e}. Not retrying.", flush=True)
+                return None
+            print(f"Binance API Error: {e}. Retrying... ({attempt + 1}/{retries})", flush=True)
         except Exception as e:
-            print(f"Unexpected error: {e}. Retrying...", flush=True)
+            print(f"Unexpected error: {e}. Retrying... ({attempt + 1}/{retries})", flush=True)
         time.sleep(delay)
-    print("Max retries reached. Operation failed.", flush=True)
+    print(f"Max retries ({retries}) reached. Operation failed.", flush=True)
     return None
 
 
-# [Binance] Get symbol's quantity precision
-def get_symbol_precision():
+# [Binance] Get symbol's filters from exchange info
+def get_symbol_filters():
     try:
         exchange_info = client.futures_exchange_info()
-        symbol_quantity_precision_dict = {}
+        symbol_filters_dict = {}
         for symbol_info in exchange_info["symbols"]:
             symbol = symbol_info.get("symbol")
-            if symbol:
-                price_precision = symbol_info.get("quantityPrecision", 0)
-                symbol_quantity_precision_dict[symbol] = int(price_precision)
-        return symbol_quantity_precision_dict
+            if not symbol:
+                continue
+
+            filters = symbol_info.get("filters", [])
+            symbol_filter = {
+                "stepSize": None,
+                "minQty": None,
+                "maxQty": None,
+                "minNotional": 5.0
+            }
+
+            for f in filters:
+                filter_type = f.get("filterType", "")
+
+                if filter_type == "MARKET_LOT_SIZE":
+                    symbol_filter["stepSize"] = float(f.get("stepSize", 0))
+                    symbol_filter["minQty"] = float(f.get("minQty", 0))
+                    symbol_filter["maxQty"] = float(f.get("maxQty", 0))
+                elif filter_type == "LOT_SIZE" and symbol_filter["stepSize"] is None:
+                    symbol_filter["stepSize"] = float(f.get("stepSize", 0))
+                    symbol_filter["minQty"] = float(f.get("minQty", 0))
+                    symbol_filter["maxQty"] = float(f.get("maxQty", 0))
+                elif filter_type == "MIN_NOTIONAL":
+                    symbol_filter["minNotional"] = float(f.get("notional", 5.0))
+
+            symbol_filters_dict[symbol] = symbol_filter
+        return symbol_filters_dict
     except BinanceAPIException as e:
-        print(f"Error fetching precision: {e}", flush=True)
+        print(f"Error fetching symbol filters: {e}", flush=True)
         return {}
 
 
 # [Binance] Settings
 if BINANCE_MAINNET_FLAG:
-    perps_tokens = retry_api_call(get_symbol_precision)
+    perps_tokens = retry_api_call(get_symbol_filters)
     if not perps_tokens:
-        print("Failed to fetch quantity precision. Exiting...", flush=True)
+        print("Failed to fetch symbol filters. Exiting...", flush=True)
         exit(1)
 else:
     exchange_info = client.futures_exchange_info()
@@ -161,6 +197,41 @@ def wait_for_trades(symbol, order_id, timeout=5):
     return []  # timeout
 
 
+# [Binance] Calculate order size respecting symbol filters
+def calculate_order_size(order_size: float, filters: dict, price: float) -> float:
+    step_size = filters.get("stepSize", 0)
+    min_qty = filters.get("minQty", 0)
+    max_qty = filters.get("maxQty", float('inf'))
+    min_notional = filters.get("minNotional", 5.0)
+
+    if step_size <= 0:
+        error_msg = f"Invalid stepSize: {step_size}"
+        raise ValueError(error_msg)
+
+    # Round down to nearest stepSize multiple
+    adjusted_size = math.floor(order_size / step_size) * step_size
+
+    # Ensure order size meets minimum quantity
+    if adjusted_size < min_qty:
+        adjusted_size = min_qty
+
+    # Ensure order size doesn't exceed maximum
+    if adjusted_size > max_qty:
+        adjusted_size = max_qty
+
+    # Validate order meets minimum notional value
+    notional_value = adjusted_size * price
+    if notional_value < min_notional:
+        required_size = math.ceil(min_notional / price / step_size) * step_size
+        if required_size <= max_qty:
+            adjusted_size = required_size
+        else:
+            error_msg = f"Cannot meet minimum notional value of ${min_notional} with current price ${price}"
+            raise ValueError(error_msg)
+
+    return adjusted_size
+
+
 # [Binance] Function to simulate a trading operation for a single ticker
 async def trade(symbol, direction, message, original_chat_id, start_time):
     try:
@@ -177,15 +248,18 @@ async def trade(symbol, direction, message, original_chat_id, start_time):
             return
 
         if BINANCE_MAINNET_FLAG:
-            selected_symbol_price_precision = perps_tokens.get(symbol)
-            if selected_symbol_price_precision is None:
-                error_msg = f"Could not find precision for symbol {symbol}"
+            symbol_filters = perps_tokens.get(symbol)
+            if symbol_filters is None:
+                error_msg = f"Could not find filters for symbol {symbol}"
                 print(error_msg, flush=True)
                 await message.reply_text(error_msg, quote=True)
                 return
 
             print(
-                f"Symbol Quantity Precision: {selected_symbol_price_precision}",
+                f"Symbol stepSize: {symbol_filters.get('stepSize')}, "
+                f"minQty: {symbol_filters.get('minQty')}, "
+                f"maxQty: {symbol_filters.get('maxQty')}, "
+                f"minNotional: ${symbol_filters.get('minNotional')}",
                 flush=True)
             # Get ticker's price
             ticker = get_price(symbol)
@@ -226,16 +300,19 @@ async def trade(symbol, direction, message, original_chat_id, start_time):
         # Calculate order size
         try:
             order_size = (INITIAL_CAPITAL * LEVERAGE) / price
-            if BINANCE_MAINNET_FLAG and selected_symbol_price_precision:
+            if BINANCE_MAINNET_FLAG and symbol_filters:
                 change_leverage(symbol, LEVERAGE)
-                order_size = math.floor(
-                    order_size * (10**selected_symbol_price_precision)) / (
-                        10**selected_symbol_price_precision)
+                order_size = calculate_order_size(order_size, symbol_filters, price)
                 corrected_initial_capital = (order_size * price) / LEVERAGE
             else:
                 corrected_initial_capital = INITIAL_CAPITAL
-        except Exception as e:
+        except ValueError as e:
             error_msg = f"Error calculating order size: {e}"
+            print(error_msg, flush=True)
+            await message.reply_text(error_msg, quote=True)
+            return
+        except Exception as e:
+            error_msg = f"Unexpected error calculating order size: {e}"
             print(error_msg, flush=True)
             await message.reply_text(error_msg, quote=True)
             return
@@ -277,6 +354,11 @@ async def trade(symbol, direction, message, original_chat_id, start_time):
                 symbol, order_size) if BINANCE_MAINNET_FLAG else True
 
             if BINANCE_MAINNET_FLAG:
+                if buy_order is None:
+                    error_msg = f"Buy order failed for {symbol} after {MAX_RETRIES} retries"
+                    print(error_msg + "\n", flush=True)
+                    await message.reply_text(error_msg, quote=True)
+                    return
                 order_info = get_order(symbol, buy_order)
                 price = float(order_info["avgPrice"])
 
@@ -293,6 +375,11 @@ async def trade(symbol, direction, message, original_chat_id, start_time):
 
                 realised_pnl = 0
                 if BINANCE_MAINNET_FLAG:
+                    if sell_order is None:
+                        error_msg = f"Sell order failed for {symbol} after {MAX_RETRIES} retries"
+                        print(error_msg + "\n", flush=True)
+                        await message.reply_text(error_msg, quote=True)
+                        return
                     order_info = get_order(symbol, sell_order)
                     new_price = float(order_info["avgPrice"])
 
@@ -479,22 +566,21 @@ class SentimentAnalysis(BaseModel):
 # [Instructor] Create Instructor Client
 def create_instructor_client():
     """Create async Instructor client for structured LLM outputs.
-    
+
     Returns:
         Async Instructor client instance configured for the provider.
-        
+
     Raises:
         ValueError: If LLM model is not supported or API key is missing.
     """
     if LLM_OPTION.upper() == "OPENAI":
         if not OPENAI_API_KEY:
             raise ValueError("OPENAI_API_KEY not configured for Instructor client")
-        
+
         print("Using OpenAI LLM API with Instructor...\n")
-        provider_model = "openai/gpt-4.1-nano"
-        
+
         return instructor.from_provider(
-            provider_model,
+            PROVIDER_MODEL,
             api_key=OPENAI_API_KEY,
             async_client=True,
         )

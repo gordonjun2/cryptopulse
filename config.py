@@ -119,6 +119,7 @@ TRADE_SENTIMENT_THRESHOLD = 50  # %
 BINANCE_MAINNET_FLAG = True
 NUM_WORKERS = 100
 MARKETCAP_UPDATE_INTERVAL = 3600  # seconds
+PROVIDER_MODEL = "openai/gpt-4.1-nano"
 
 PROMPT = """
 You are an assistant specialized in extracting cryptocurrencies mentioned in a given text and analyzing the sentiment for EACH coin individually.
@@ -127,19 +128,32 @@ Task:
 Extract cryptocurrency tickers from the text. ALL tickers MUST be UPPERCASE (e.g., XRP, SOL, ADA, BTC, ETH).
 If no cryptocurrency is mentioned, return an empty list for coins.
 
-For EACH cryptocurrency mentioned, assign an individual Sentiment score ranging from -100% to 100%:
-- Negative values (-100% to -1%) indicate Bearish sentiment.
-- Positive values (1% to 100%) indicate Bullish sentiment.
-- A score of 0% means completely neutral sentiment.
+For EACH cryptocurrency mentioned, assign an individual Sentiment score ranging from -100.0 to 100.0:
+- Negative values (-100.0 to -1.0) indicate Bearish sentiment.
+- Positive values (1.0 to 100.0) indicate Bullish sentiment.
+- A score of 0.0 means completely neutral sentiment.
+
+IMPORTANT: Use CONTINUOUS and FLUID scoring with HUMAN JUDGMENT. Your scores should reflect nuanced sentiment intensity:
+- Weak bearish: -5.0 to -25.0 (e.g., "concerns about", "slight downturn", "minor concerns")
+- Moderate bearish: -26.0 to -50.0 (e.g., "decline", "pressure", "challenges", "headwinds")
+- Strong bearish: -51.0 to -75.0 (e.g., "crash", "major sell-off", "fear", "regulatory crackdown")
+- Extreme bearish: -76.0 to -100.0 (e.g., "collapse", "liquidation cascade", "rug pull", "depegging")
+- Weak bullish: 5.0 to 25.0 (e.g., "hopeful", "optimistic", "slight uptick")
+- Moderate bullish: 26.0 to 50.0 (e.g., "rally", "growth", "positive momentum")
+- Strong bullish: 51.0 to 75.0 (e.g., "breakout", "strong adoption", "institutional buying")
+- Extreme bullish: 76.0 to 100.0 (e.g., "parabolic", "ATH", "massive partnership", "nation-state adoption")
 
 Consider both direct (crypto-specific) and indirect (macro/geopolitical) factors influencing sentiment:
-Bearish Sentiment (-100% to -1%): Look for context like "crash," "sell-off," "fear," "regulatory crackdown," "decline," "war," "uncertainty," 
+Bearish Sentiment (use continuous -100.0 to -1.0 scale):
+Look for context like "crash," "sell-off," "fear," "regulatory crackdown," "decline," "war," "uncertainty," 
 "economic slowdown," "liquidity issues," "bank failures", "dump," "collapse," "downtrend," "bear market," "capitulation," "recession," "stagflation," 
 "deflation," "bubble burst," "outflows," "sell pressure", "interest rate hike," "quantitative tightening," "high inflation," "debt crisis," 
 "unemployment spike," "GDP contraction," "yield curve inversion", "rug pull," "liquidation cascade," "exchange insolvency," "hacked," "exploit," "FUD," 
 "whale dumping," "token unlock," "sell wall," "depegging," "regulatory scrutiny", "sanctions," "trade war," "black swan event," "political instability," 
 "supply chain disruptions," "energy crisis," "default risk", "fear index rising," "sentiment shift negative," "risk-off environment."
-Bullish Sentiment (1% to 100%): Look for context like "rally," "bullish," "uptrend," "breakout," "growth," "institutional adoption," "rate cuts," 
+
+Bullish Sentiment (use continuous 1.0 to 100.0 scale):
+Look for context like "rally," "bullish," "uptrend," "breakout," "growth," "institutional adoption," "rate cuts," 
 "fiscal stimulus," "ETF approval", "deal", "partnership", "endorsement", "optimism", "interest", "price surge," "pump," "ATH (all-time high)," "parabolic," 
 "breakout confirmation," "FOMO," "whale accumulation," "supply squeeze," "buy pressure," "strong support", "rate cut," "QE (quantitative easing)," 
 "economic recovery," "disinflation," "GDP growth," "strong labor market", "token burn," "supply shock," "staking rewards," "mainnet launch," "protocol upgrade," 
